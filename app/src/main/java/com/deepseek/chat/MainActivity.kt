@@ -129,7 +129,7 @@ class MainActivity : Activity() {
                 val it2 = uiItems.getOrNull(pos) ?: return@setOnItemClickListener
                 if (it2.type == "thinking") {
                     it2.expanded = !it2.expanded
-                    adapter.notifyDataSetChanged()
+                    this@MainActivity.adapter.notifyDataSetChanged()
                 }
             }
         }
