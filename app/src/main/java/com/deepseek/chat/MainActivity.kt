@@ -112,7 +112,7 @@ class MainActivity : Activity() {
         val list = ListView(this).apply {
             adapter = this@MainActivity.adapter
             divider = null
-            stackFromBottom = true
+            setStackFromBottom(true)
             transcriptMode = ListView.TRANSCRIPT_MODE_ALWAYS_SCROLL
             setBackgroundColor(Color.TRANSPARENT)
             setPadding(8, 8, 8, 8)
