@@ -74,6 +74,12 @@ class SettingsActivity : Activity() {
         modelField.setTextSize(13f)
         root.addView(modelField)
 
+        root.addView(label("Thinking effort (how long it thinks)").also { it.setPadding(0, dp(24), 0, dp(6)) })
+        val effortField = field(prefs.getString("effort", "high"),
+            "high / medium / low", password = false)
+        effortField.setTextSize(13f)
+        root.addView(effortField)
+
         root.addView(TextView(this).apply {
             text = "Free keys: build.nvidia.com → sign in → Get API Key.\n" +
                    "Thinking mode is always ON with high reasoning effort."
@@ -90,10 +96,13 @@ class SettingsActivity : Activity() {
                 cornerRadius = 32f
             }
             setOnClickListener {
+                val effortIn = effortField.text.toString().trim().lowercase()
+                val effortVal = if (effortIn in listOf("high", "medium", "low")) effortIn else "high"
                 prefs.edit()
                     .putString("api_key", keyField.text.toString().trim())
                     .putString("model", modelField.text.toString().trim()
                         .ifBlank { NviClient.DEFAULT_MODEL })
+                    .putString("effort", effortVal)
                     .apply()
                 Toast.makeText(this@SettingsActivity,
                     "Saved ✓", Toast.LENGTH_SHORT).show()

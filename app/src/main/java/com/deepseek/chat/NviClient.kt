@@ -26,7 +26,7 @@ object NviClient {
 
     const val DEFAULT_MODEL = "deepseek-ai/deepseek-v4-flash-0731"
 
-    fun buildBody(model: String, messages: List<Msg>): JSONObject {
+    fun buildBody(model: String, messages: List<Msg>, effort: String = "high"): JSONObject {
         val arr = JSONArray()
         for (m in messages) {
             arr.put(JSONObject().put("role", m.role).put("content", m.content))
@@ -39,7 +39,7 @@ object NviClient {
             .put("max_tokens", 16384)
             .put("chat_template_kwargs", JSONObject()
                 .put("thinking", true)
-                .put("reasoning_effort", "high"))
+                .put("reasoning_effort", effort))
             .put("stream", true)
     }
 
@@ -47,11 +47,12 @@ object NviClient {
         apiKey: String,
         model: String,
         messages: List<Msg>,
+        effort: String,
         onThinking: (String) -> Unit,
         onContent: (String) -> Unit,
         onDone: (Throwable?) -> Unit
     ): Call {
-        val body = buildBody(model, messages).toString().toRequestBody(JSON_TYPE)
+        val body = buildBody(model, messages, effort).toString().toRequestBody(JSON_TYPE)
         val request = Request.Builder()
             .url("https://integrate.api.nvidia.com/v1/chat/completions")
             .header("Authorization", "Bearer $apiKey")

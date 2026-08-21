@@ -34,7 +34,9 @@ class MainActivity : Activity() {
     private var activeCall: okhttp3.Call? = null
     private var busy = false
 
-    class Item(val type: String, val text: StringBuilder)
+    class Item(val type: String, val text: StringBuilder) {
+        var expanded = false
+    }
 
     inner class ChatAdapter : BaseAdapter() {
         override fun getCount(): Int = uiItems.size
@@ -60,7 +62,13 @@ class MainActivity : Activity() {
                     tv.background = bubbleBg(Color.parseColor("#1E1E1E"))
                     tv.setTextColor(Color.parseColor("#90A4AE"))
                     tv.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.ITALIC))
-                    tv.text = "💭 Thinking…\n${item.text}"
+                    val full = item.text
+                    tv.text = if (item.expanded || full.length < 220) {
+                        "💭 Thinking…\n$full"
+                    } else {
+                        "💭 Thinking… (${full.length} chars) ▸ tap to expand\n" +
+                            full.substring(0, 180) + "…"
+                    }
                 }
                 "error" -> {
                     lp.gravity = Gravity.START
@@ -117,6 +125,13 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.TRANSPARENT)
             setPadding(8, 8, 8, 8)
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            setOnItemClickListener { _, _, pos, _ ->
+                val it2 = uiItems.getOrNull(pos) ?: return@setOnItemClickListener
+                if (it2.type == "thinking") {
+                    it2.expanded = !it2.expanded
+                    adapter.notifyDataSetChanged()
+                }
+            }
         }
         root.addView(list, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -225,6 +240,7 @@ class MainActivity : Activity() {
         }
         val model = prefs.getString("model", NviClient.DEFAULT_MODEL)?.takeIf { it.isNotBlank() }
             ?: NviClient.DEFAULT_MODEL
+        val effort = prefs.getString("effort", null)?.takeIf { it.isNotBlank() } ?: "high"
 
         busy = true
         input.setText("")
@@ -241,7 +257,7 @@ class MainActivity : Activity() {
             adapter.notifyDataSetChanged()
         }
 
-        activeCall = NviClient.stream(apiKey, model, history.toList(),
+        activeCall = NviClient.stream(apiKey, model, history.toList(), effort,
             onThinking = { chunk -> handler.post {
                 if (content == null) {
                     if (thinking == null) {
