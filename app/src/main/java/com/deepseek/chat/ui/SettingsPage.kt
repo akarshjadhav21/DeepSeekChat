@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.deepseek.chat.ChatStore
 import com.deepseek.chat.NviClient
+import com.deepseek.chat.Reports
 import com.deepseek.chat.engine.AppStore
 
 @Composable
@@ -59,6 +60,8 @@ fun SettingsPage() {
     var base by remember { mutableStateOf(prefs.getString("base_url", NviClient.DEFAULT_BASE) ?: NviClient.DEFAULT_BASE) }
     var effort by remember { mutableStateOf(prefs.getString("effort", "high") ?: "high") }
     var agentAuto by remember { mutableStateOf(AppStore.agentAuto) }
+    var reportsOn by remember { mutableStateOf(prefs.getBoolean("report_enabled", false)) }
+    var reportsHours by remember { mutableStateOf(prefs.getInt("report_hours", 12)) }
     var status by remember { mutableStateOf<Pair<String, Boolean>?>(null) } // msg, isError
     var saving by remember { mutableStateOf(false) }
 
@@ -76,8 +79,7 @@ fun SettingsPage() {
         }.start()
     }
     val importLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
+        ActivityResultContracts.OpenDocument()) { uri ->        if (uri == null) return@rememberLauncherForActivityResult
         Thread {
             val parsed = runCatching {
                 ChatStore.deserialize(
@@ -95,6 +97,9 @@ fun SettingsPage() {
             }
         }.start()
     }
+
+    val notifPerm = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()) { }
 
     fun save() {
         saving = true; status = "Saving…" to false
@@ -152,6 +157,51 @@ fun SettingsPage() {
                 Text("Blocklist still enforced. Long-press 🤖 also toggles this.",
                     color = C.textLow, fontSize = 11.sp)
             }
+            Section("⏰ Scheduled reports") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Device report", color = C.textHi, modifier = Modifier.weight(1f))
+                    Switch(checked = reportsOn, onCheckedChange = { on ->
+                        reportsOn = on
+                        prefs.edit().putBoolean("report_enabled", on).commit()
+                        if (on) {
+                            if (android.os.Build.VERSION.SDK_INT >= 33)
+                                notifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            Reports.schedule(ctx, reportsHours)
+                            status = "⏰ Reports every ${reportsHours}h" to false
+                        } else {
+                            Reports.cancel(ctx)
+                            status = "Reports off" to false
+                        }
+                    })
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 6.dp)) {
+                    for (h in listOf(6, 12, 24)) {
+                        FilterChip(selected = reportsHours == h, onClick = {
+                            reportsHours = h
+                            prefs.edit().putInt("report_hours", h).commit()
+                            if (reportsOn) Reports.schedule(ctx, h)
+                        }, label = { Text("${h}h") }, shape = CircleShape)
+                    }
+                }
+                OutlinedButton(onClick = {
+                    status = "Building report… (model can take minutes on free tier)" to false
+                    Thread {
+                        try {
+                            Reports.gatherAndDeliver(ctx)
+                            AppStore.handler.post { status =
+                                "✓ Report saved — see 📊 Scheduled reports chat" to false }
+                        } catch (e: Exception) {
+                            AppStore.handler.post { status =
+                                "✗ Report failed: ${e.message}" to true }
+                        }
+                    }.start()
+                }, shape = RoundedCornerShape(14.dp), modifier = Modifier.padding(top = 6.dp)) {
+                    Text("▶ Run now")
+                }
+                Text("Runs in background (WorkManager): collects battery/storage/RAM stats, AI-summarizes, drops result into the 📊 chat + notification.",
+                    color = C.textLow, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+            }
             Section("💾 Backup & restore") {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(onClick = { exportLauncher.launch("deepseekchat-backup.json") },
@@ -165,8 +215,8 @@ fun SettingsPage() {
             }
 
             Section("ℹ️ About") {
-                Text("DeepSeek Chat v3.1.1 · Talk edition", color = C.textMid, fontSize = 13.sp)
-                Text("Voice in 11 languages · vision · agent · builder. Free keys: build.nvidia.com",
+                Text("DeepSeek Chat v3.2.0 · Plan & Reports", color = C.textMid, fontSize = 13.sp)
+                Text("Plan-mode agent · scheduled reports · voice in 11 languages · vision · builder. Free keys: build.nvidia.com",
                     color = C.textLow, fontSize = 12.sp)
             }
 

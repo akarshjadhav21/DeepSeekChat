@@ -158,7 +158,11 @@ fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> U
                 Icon(Icons.Filled.IosShare, "Export", tint = C.textMid) }
             // agent toggle: tap=on/off, long-press=auto-run
             Box(Modifier.clip(CircleShape).background(if (AppStore.agentOn) Color(0xFF173B25) else Color.Transparent)
-                .combinedClickable(onClick = { AppStore.agentOn = !AppStore.agentOn },
+                .combinedClickable(onClick = {
+                    AppStore.agentOn = !AppStore.agentOn
+                    if (!AppStore.agentOn && !AppStore.planRunning) AppStore.discardPlan()
+                    AppStore.planOn = AppStore.agentOn && AppStore.planOn
+                },
                     onLongClick = {
                         AppStore.agentAuto = !AppStore.agentAuto
                         android.widget.Toast.makeText(ctx,
@@ -169,16 +173,34 @@ fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> U
                 if (AppStore.agentOn) Box(Modifier.size(7.dp).clip(CircleShape)
                     .background(C.green).align(Alignment.TopEnd))
             }
+            // plan-mode toggle (only while agent is on): model proposes, nothing runs until approved
+            if (AppStore.agentOn) {
+                Box(Modifier.clip(CircleShape)
+                    .background(if (AppStore.planOn) Color(0xFF241A3F) else Color.Transparent)
+                    .clickable(enabled = !AppStore.planRunning) {
+                        AppStore.planOn = !AppStore.planOn
+                        android.widget.Toast.makeText(ctx,
+                            if (AppStore.planOn) "📋 Plan mode — proposes only, you approve"
+                            else "Plan mode OFF — direct commands",
+                            android.widget.Toast.LENGTH_SHORT).show()
+                    }.padding(8.dp)) {
+                    Text("📋", fontSize = 17.sp)
+                    if (AppStore.planOn) Box(Modifier.size(7.dp).clip(CircleShape)
+                        .background(C.accent2).align(Alignment.TopEnd))
+                }
+            }
             if (AppStore.agentOn) Text("${AppStore.agentSteps}/${com.deepseek.chat.Agent.MAX_STEPS}",
                 color = C.amber, fontSize = 10.sp, modifier = Modifier.padding(start = 2.dp))
         }
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             val msgs = chat?.msgs ?: emptyList()
+            val showPlan = AppStore.pendingPlan != null || AppStore.planSteps.isNotEmpty()
             val itemCount = msgs.size +
                 (if (AppStore.thinkingText != null) 1 else 0) +
                 (if (AppStore.liveContent != null) 1 else 0) +
                 (if (AppStore.toolText != null) 1 else 0) +
+                (if (showPlan) 1 else 0) +
                 (if (AppStore.statusText.isNotEmpty()) 1 else 0) +
                 (if (AppStore.errorText != null) 1 else 0)
 
@@ -194,6 +216,7 @@ fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> U
                 AppStore.thinkingText?.let { t -> item { ThinkingBubble(t) } }
                 AppStore.liveContent?.let { t -> item { AiBubble(t) } }
                 AppStore.toolText?.let { t -> item { ToolBubble(t) } }
+                if (showPlan) item { PlanCard() }
                 if (AppStore.statusText.isNotEmpty()) item { StatusLine(AppStore.statusText) }
                 AppStore.errorText?.let { e -> item { ErrorBubble(e) } }
             }
@@ -230,6 +253,7 @@ fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> U
             AppStore.thinkingText = null
             AppStore.toolText = null
             AppStore.errorText = null
+            if (!AppStore.planRunning) AppStore.discardPlan()
         }
     }
 
@@ -358,6 +382,50 @@ fun ToolBubble(text: String) {
     Row(Modifier.fillMaxWidth().padding(start = 44.dp, end = 36.dp)) {
         Box(Modifier.background(C.toolBg, RoundedCornerShape(14.dp)).padding(10.dp)) {
             Text(text, color = Color(0xFF7CE38B), fontSize = 12.sp, fontFamily = mono())
+        }
+    }
+}
+
+@Composable
+fun PlanCard() {
+    val pending = AppStore.pendingPlan
+    if (pending == null && AppStore.planSteps.isEmpty()) return
+    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(
+        containerColor = Color(0xFF10161F)),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 36.dp)) {
+        Column(Modifier.padding(12.dp)) {
+            Text(
+                when {
+                    pending != null -> "📋 Plan — ${pending.size} steps · nothing runs until you approve"
+                    AppStore.planRunning -> "⚙ Executing plan…"
+                    else -> "✓ Plan finished"
+                },
+                color = C.accent2, fontSize = 12.sp)
+            Spacer(Modifier.height(8.dp))
+            for ((cmd, st) in AppStore.planSteps) {
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(vertical = 2.dp)) {
+                    Text(when (st) { 1 -> "⏳"; 2 -> "✅"; 3 -> "❌"; else -> "⬜" }, fontSize = 13.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(cmd, fontFamily = mono(), fontSize = 11.sp,
+                        color = if (st == 3) C.red else C.textHi)
+                }
+            }
+            if (pending != null) {
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { AppStore.approvePlan() },
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp)) {
+                        Text("▶ Approve & run", fontSize = 13.sp)
+                    }
+                    OutlinedButton(onClick = { AppStore.discardPlan() },
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp)) {
+                        Text("Discard", fontSize = 13.sp, color = C.textMid)
+                    }
+                }
+            }
         }
     }
 }

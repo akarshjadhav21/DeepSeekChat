@@ -25,11 +25,18 @@ object AppStore {
     var pendingConfirm by mutableStateOf<AgentConfirm?>(null)
     var intentEvent by mutableStateOf<Intent?>(null)
     var openTalk by mutableStateOf(false)
+    var openReports by mutableStateOf(false)
 
     var agentOn by mutableStateOf(false)
     var agentAuto by mutableStateOf(false)
     var agentSteps by mutableStateOf(0)
         private set
+
+    // Plan Mode: 📋 model proposes ```plan steps → user approves → checkbox execution
+    var planOn by mutableStateOf(false)
+    var pendingPlan by mutableStateOf<List<String>?>(null) // awaiting Approve/Discard
+    var planSteps by mutableStateOf<List<Pair<String, Int>>>(emptyList()) // cmd to 0 pend 1 run 2 ok 3 fail
+    var planRunning by mutableStateOf(false)
 
     var pendingImages by mutableStateOf<List<File>>(emptyList())
     var visionPrompt by mutableStateOf<Boolean?>(null) // true=ask switch dialog
@@ -46,6 +53,7 @@ object AppStore {
 
     fun prefs() = prefsWrap
     fun ctx() = appCtx
+    val ready: Boolean get() = ::prefsWrap.isInitialized
 
     fun reload() {
         chats = ChatStore.list(appCtx)
@@ -128,7 +136,12 @@ object AppStore {
         statusText = "Contacting model…"
 
         val msgs0 = history()
-        val msgs = if (agentOn) listOf(Msg("system", Agent.SYSTEM_PROMPT)) + msgs0 else msgs0
+        val sysPrompt = when {
+            agentOn && planOn -> Agent.PLAN_PROMPT
+            agentOn -> Agent.SYSTEM_PROMPT
+            else -> null
+        }
+        val msgs = if (sysPrompt != null) listOf(Msg("system", sysPrompt)) + msgs0 else msgs0
 
         var think: StringBuilder? = null
         var content: StringBuilder? = null
@@ -161,7 +174,9 @@ object AppStore {
                     chat.msgs.add(Msg("assistant", reply))
                     persist()
                 }
-                if (agentOn && err == null && !stopped && reply.isNotBlank()) maybeRunAgentCmd(reply)
+                if (agentOn && err == null && !stopped && reply.isNotBlank()) {
+                    if (planOn) maybeTakePlan(reply) else maybeRunAgentCmd(reply)
+                }
             }}
         )
     }
@@ -230,5 +245,80 @@ object AppStore {
                     "Continue with the next command or write your final answer.")
             }
         }.start()
+    }
+
+    // ---------- plan mode ----------
+
+    private var planGen = 0
+
+    private fun maybeTakePlan(reply: String) {
+        val steps = Agent.extractPlan(reply)
+        if (steps.isEmpty()) return
+        val capped = steps.take(Agent.MAX_PLAN_STEPS)
+        pendingPlan = capped
+        planSteps = capped.map { it to 0 }
+    }
+
+    fun approvePlan() {
+        val steps = pendingPlan ?: return
+        if (planRunning) return
+        pendingPlan = null
+        planRunning = true
+        val gen = ++planGen
+        Thread {
+            val outputs = StringBuilder()
+            for ((i, cmd) in steps.withIndex()) {
+                handler.post {
+                    if (gen == planGen) planSteps =
+                        planSteps.mapIndexed { j, p -> if (j == i) cmd to 1 else p }
+                }
+                val out: String = when {
+                    Agent.isBlocked(cmd) -> "[BLOCKED for safety]"
+                    cmd.startsWith("app-uninstall ") -> {
+                        intentEvent = Intent(Intent.ACTION_DELETE, Uri.parse(
+                            "package:" + cmd.removePrefix("app-uninstall ").trim()))
+                        "(system uninstall dialog opened)"
+                    }
+                    cmd.startsWith("app-install ") -> {
+                        try {
+                            val path = cmd.removePrefix("app-install ").trim().removeSurrounding("\"")
+                            val f = File(path)
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                appCtx, appCtx.packageName + ".fileprovider", f)
+                            intentEvent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(uri, "application/vnd.android.package-archive")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            "(installer opened for $path)"
+                        } catch (e: Exception) {
+                            "[error] ${e.message}"
+                        }
+                    }
+                    else -> Agent.execute(cmd)
+                }
+                val failed = out.startsWith("[BLOCKED") || out.startsWith("[error") ||
+                    out.startsWith("[timeout")
+                handler.post {
+                    if (gen == planGen) planSteps =
+                        planSteps.mapIndexed { j, p -> if (j == i) cmd to (if (failed) 3 else 2) else p }
+                }
+                outputs.append("$ ").append(cmd).append('\n').append(out).append("\n\n")
+            }
+            handler.post {
+                if (gen != planGen) return@post
+                planRunning = false
+                feedToolOutput(
+                    "[PLAN EXECUTED — all steps done]\n${outputs.toString().take(Agent.MAX_OUT * 2)}\n" +
+                        "Summarize the results for the user in plain text.")
+            }
+        }.start()
+    }
+
+    fun discardPlan() {
+        planGen++
+        pendingPlan = null
+        planSteps = emptyList()
+        planRunning = false
     }
 }

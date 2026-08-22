@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit
 object Agent {
 
     const val MAX_STEPS = 6
+    const val MAX_PLAN_STEPS = 10
     private const val TIMEOUT_S = 20L
     const val MAX_OUT = 4000
 
@@ -30,6 +31,27 @@ Rules:
 - Never assume root. Some paths need storage permission granted to this app.
 """.trim().trimIndent()
 
+    val PLAN_PROMPT = """
+You are an AI agent running INSIDE an Android chat app on the user's phone, in PLAN MODE.
+The user will give you a multi-step task. You CANNOT execute anything right now —
+instead produce a plan of shell commands for the user to review and approve.
+
+Reply with EXACTLY ONE fenced block tagged `plan` and nothing else:
+
+```plan
+dumpsys battery | grep -E "level|status"
+df -h /sdcard
+```
+
+Rules:
+- One shell command per line, top-to-bottom order. ${MAX_PLAN_STEPS} steps max — prefer fewer.
+- Only binaries in /system/bin or /system/xbin exist (toybox): ls cat df ps top netstat ip ping getprop dumpsys screencap date uptime id whoami printenv stat wc head tail grep sed find sleep uname vmstat nproc settings am pm input service logcat wm
+- Useful recipes: battery=dumpsys battery | storage=df -h /sdcard | memory=cat /proc/meminfo | apps=pm list packages -3 | appinfo=dumpsys package NAME | screen=screencap -p /sdcard/dcim_screen.png | display=wm size | wifi=ip route | props=getprop ro.product.model
+- Special actions allowed as steps (NOT shell commands): app-install /path/to/file.apk · app-uninstall com.package.name
+- Never assume root. Some paths need storage permission granted to this app.
+- Nothing runs until the user approves the whole plan. Do not add commentary outside the block.
+""".trim().trimIndent()
+
     private val DENY = listOf(
         "su ", "su\n", "reboot", "shutdown", "poweroff",
         "rm -rf /", "rm -rf *", "mkfs", "dd if=", "flash",
@@ -52,6 +74,20 @@ Rules:
         val end = body.indexOf("```")
         val cmd = (if (end >= 0) body.substring(0, end) else body).trim()
         return cmd.takeIf { it.isNotEmpty() }
+    }
+
+    /** Extracts commands from the first ```plan fenced block — one per line, numbering stripped. */
+    fun extractPlan(reply: String): List<String> {
+        val marker = "```plan"
+        val i = reply.indexOf(marker)
+        if (i < 0) return emptyList()
+        var body = reply.substring(i + marker.length)
+        if (body.startsWith("\n")) body = body.substring(1)
+        val end = body.indexOf("```")
+        if (end >= 0) body = body.substring(0, end)
+        return body.lines()
+            .map { it.trim().replace(Regex("^\\d+[.)]\\s*"), "") }
+            .filter { it.isNotEmpty() }
     }
 
     /** Runs a command under sh, captures combined output, truncates. */
