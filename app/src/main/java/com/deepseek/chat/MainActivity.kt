@@ -254,6 +254,10 @@ class MainActivity : Activity() {
             dialogRef?.dismiss()
             confirmDeleteChat()
         })
+        row.addView(smallButton("📤 Export") {
+            dialogRef?.dismiss()
+            exportChat()
+        })
         container.addView(row)
 
         val dialog = AlertDialog.Builder(this)
@@ -270,6 +274,37 @@ class MainActivity : Activity() {
         dialog.window?.setLayout(
             (resources.displayMetrics.widthPixels * 0.92).toInt(),
             (resources.displayMetrics.heightPixels * 0.7).toInt())
+    }
+
+    private fun exportChat() {
+        val chat = chats[activeIdx]
+        if (chat.msgs.isEmpty()) {
+            Toast.makeText(this, "This chat is empty", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val sb = StringBuilder()
+        sb.appendLine("# ${chat.title}")
+        sb.appendLine("*Exported from DeepSeek Chat — ${java.text.SimpleDateFormat(
+            "yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())}*")
+        sb.appendLine()
+        for (m in chat.msgs) {
+            when (m.role) {
+                "user" -> { sb.appendLine("## 🧑 You"); sb.appendLine(m.content) }
+                "assistant" -> { sb.appendLine("## 🤖 DeepSeek"); sb.appendLine(m.content) }
+            }
+            sb.appendLine()
+            sb.appendLine("---")
+            sb.appendLine()
+        }
+        val md = sb.toString().trimEnd() + "\n"
+
+        AlertDialog.Builder(this)
+            .setTitle("Export \"${chat.title}\"")
+            .setItems(arrayOf("📋 Copy Markdown", "📤 Share…")) { _, which ->
+                if (which == 0) copyText(md) else shareText(md)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun confirmDeleteChat() {
