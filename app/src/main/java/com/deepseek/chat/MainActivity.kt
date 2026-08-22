@@ -15,6 +15,9 @@ class MainActivity : ComponentActivity() {
         if (intent?.getStringExtra("open") == "reports") {
             com.deepseek.chat.engine.AppStore.openReports = true
         }
+        if (intent?.getStringExtra("open") == "chat") {
+            com.deepseek.chat.engine.AppStore.openChat = true
+        }
         setContent {
             DeepSeekTheme {
                 DeepSeekApp()

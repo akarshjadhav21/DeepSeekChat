@@ -56,6 +56,10 @@ fun DeepSeekApp() {
             val c = AppStore.chats.firstOrNull { it.title == com.deepseek.chat.Reports.CHAT_TITLE }
             if (c != null) { AppStore.activeId = c.id; nav.navigate("conv/${c.id}") }
         }
+        if (AppStore.openChat) {
+            AppStore.openChat = false
+            AppStore.activeId?.let { nav.navigate("conv/$it") }
+        }
     }
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: "chats"

@@ -23,8 +23,22 @@ Rules:
 - One command per reply. The app will run it and send you the output as [TOOL OUTPUT].
 - After seeing output, either run another command or write your final answer in plain text.
 - Max ${MAX_STEPS} commands per task — be efficient, don't repeat commands.
-- Only binaries in /system/bin or /system/xbin exist (toybox): ls cat df ps top netstat ip ping getprop dumpsys screencap date uptime id whoami printenv stat wc head tail grep sed find sleep uname vmstat nproc settings am pm input service logcat wm
+- Only binaries in /system/bin or /system/xbin exist (toybox): ls cat df ps top netstat ip ping getprop dumpsys screencap date uptime id whoami printenv stat wc head tail grep sed find sleep uname vmstat nproc settings am pm input service logcat wm cmd monkey
 - Useful recipes: battery=dumpsys battery | storage=df -h /sdcard | memory=cat /proc/meminfo | apps=pm list packages -3 | appinfo=dumpsys package NAME | screen=screencap -p /sdcard/dcim_screen.png | display=wm size | wifi=ip route | props=getprop ro.product.model
+- You CAN also ACT on the phone — these are normal, allowed actions:
+    * Launch an installed app (two steps):
+        pm list packages | grep <guess>        → find the exact package name
+        monkey -p <package> -c android.intent.category.LAUNCHER 1   → launch it
+      If monkey fails, fall back to:
+        cmd package resolve-activity --brief <package>
+        am start -n <package>/<component-from-output>
+    * Open a system settings screen, e.g.:
+        am start -a android.settings.WIFI_SETTINGS
+      Working actions include: SETTINGS, WIFI_SETTINGS, AIRPLANE_MODE_SETTINGS,
+      BLUETOOTH_SETTINGS, DISPLAY_SETTINGS, SOUND_SETTINGS,
+      INTERNAL_STORAGE_SETTINGS, APPLICATION_DEVELOPMENT_SETTINGS
+- HONESTY RULE: never claim you lack permission or access without first TRYING the command.
+  If a command fails, quote its real error and suggest an alternative.
 - Special actions (NOT shell commands, use inside a ```run block):
     app-install /path/to/file.apk     -> opens system installer
     app-uninstall com.package.name    -> opens system uninstall dialog
@@ -45,8 +59,15 @@ df -h /sdcard
 
 Rules:
 - One shell command per line, top-to-bottom order. ${MAX_PLAN_STEPS} steps max — prefer fewer.
-- Only binaries in /system/bin or /system/xbin exist (toybox): ls cat df ps top netstat ip ping getprop dumpsys screencap date uptime id whoami printenv stat wc head tail grep sed find sleep uname vmstat nproc settings am pm input service logcat wm
+- Only binaries in /system/bin or /system/xbin exist (toybox): ls cat df ps top netstat ip ping getprop dumpsys screencap date uptime id whoami printenv stat wc head tail grep sed find sleep uname vmstat nproc settings am pm input service logcat wm cmd monkey
 - Useful recipes: battery=dumpsys battery | storage=df -h /sdcard | memory=cat /proc/meminfo | apps=pm list packages -3 | appinfo=dumpsys package NAME | screen=screencap -p /sdcard/dcim_screen.png | display=wm size | wifi=ip route | props=getprop ro.product.model
+- Acting is allowed in plans too:
+    * Launch an app: pm list packages | grep <guess>, then
+      monkey -p <package> -c android.intent.category.LAUNCHER 1
+      (fallback: cmd package resolve-activity --brief <package> then am start -n <pkg>/<component>)
+    * Open system screens: am start -a android.settings.WIFI_SETTINGS
+      (also SETTINGS, AIRPLANE_MODE_SETTINGS, BLUETOOTH_SETTINGS, DISPLAY_SETTINGS,
+       SOUND_SETTINGS, INTERNAL_STORAGE_SETTINGS)
 - Special actions allowed as steps (NOT shell commands): app-install /path/to/file.apk · app-uninstall com.package.name
 - Never assume root. Some paths need storage permission granted to this app.
 - Nothing runs until the user approves the whole plan. Do not add commentary outside the block.

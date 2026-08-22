@@ -26,6 +26,7 @@ object AppStore {
     var intentEvent by mutableStateOf<Intent?>(null)
     var openTalk by mutableStateOf(false)
     var openReports by mutableStateOf(false)
+    var openChat by mutableStateOf(false)
 
     var agentOn by mutableStateOf(false)
     var agentAuto by mutableStateOf(false)
@@ -89,7 +90,7 @@ object AppStore {
 
     // ---------- sending ----------
 
-    fun send(text: String, onNeedKey: () -> Unit) {
+    fun send(text: String, onNeedKey: () -> Unit, modelOverride: String? = null) {
         if (text.isBlank() || busy || pendingImages.isNotEmpty() && text.isBlank()) return
         val apiKey = prefsWrap.getString("api_key", "") ?: ""
         if (apiKey.isBlank()) { onNeedKey(); return }
@@ -102,7 +103,7 @@ object AppStore {
         agentSteps = 0
         if (chat.title == "New chat" && chat.msgs.size >= 2) autoTitle(chat)
         persist()
-        startStream()
+        startStream(modelOverride)
     }
 
     private fun autoTitle(chat: Chat) {
@@ -125,10 +126,12 @@ object AppStore {
 
     // ---------- streaming ----------
 
-    private fun startStream() {
+    private fun startStream(modelOverride: String? = null) {
         val apiKey = prefsWrap.getString("api_key", "") ?: ""
         if (apiKey.isBlank()) { errorText = "Set your NVIDIA API key in Settings"; return }
-        val model = prefsWrap.getString("model", NviClient.DEFAULT_MODEL)?.ifBlank { null } ?: NviClient.DEFAULT_MODEL
+        val model = modelOverride?.trim()?.ifBlank { null }
+            ?: prefsWrap.getString("model", NviClient.DEFAULT_MODEL)?.ifBlank { null }
+            ?: NviClient.DEFAULT_MODEL
         val effort = prefsWrap.getString("effort", "high") ?: "high"
         val baseUrl = prefsWrap.getString("base_url", NviClient.DEFAULT_BASE)?.ifBlank { null } ?: NviClient.DEFAULT_BASE
 
@@ -218,7 +221,11 @@ object AppStore {
                 "[TOOL OUTPUT]\nBLOCKED for safety: $cmd\nExplain why and suggest a safe alternative.")
             else -> {
                 val confirm = AgentConfirm(cmd, "run")
-                if (agentAuto) execAgentRun(cmd) else pendingConfirm = confirm
+                if (agentAuto) execAgentRun(cmd) else {
+                    pendingConfirm = confirm
+                    com.deepseek.chat.AgentNotify.needsApproval(appCtx,
+                        "The agent wants to run:\n$cmd")
+                }
             }
         }
     }
@@ -226,12 +233,14 @@ object AppStore {
     fun approvePending() {
         val c = pendingConfirm ?: return
         pendingConfirm = null
+        com.deepseek.chat.AgentNotify.clear(appCtx)
         execAgentRun(c.cmd)
     }
 
     fun denyPending() {
         val c = pendingConfirm ?: return
         pendingConfirm = null
+        com.deepseek.chat.AgentNotify.clear(appCtx)
         feedToolOutput("[TOOL OUTPUT]\nUser DENIED: ${c.cmd}\nAsk what they'd like instead.")
     }
 
@@ -257,6 +266,8 @@ object AppStore {
         val capped = steps.take(Agent.MAX_PLAN_STEPS)
         pendingPlan = capped
         planSteps = capped.map { it to 0 }
+        com.deepseek.chat.AgentNotify.needsApproval(appCtx,
+            "Plan ready: ${capped.size} steps to approve")
     }
 
     fun approvePlan() {
@@ -264,6 +275,7 @@ object AppStore {
         if (planRunning) return
         pendingPlan = null
         planRunning = true
+        com.deepseek.chat.AgentNotify.clear(appCtx)
         val gen = ++planGen
         Thread {
             val outputs = StringBuilder()
@@ -320,5 +332,6 @@ object AppStore {
         pendingPlan = null
         planSteps = emptyList()
         planRunning = false
+        com.deepseek.chat.AgentNotify.clear(appCtx)
     }
 }

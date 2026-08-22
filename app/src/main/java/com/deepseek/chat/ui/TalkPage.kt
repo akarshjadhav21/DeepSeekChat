@@ -245,11 +245,13 @@ fun TalkPage() {
         }
         phase = "thinking"
         awaitingReply = true
-        AppStore.send(text) {
+        // fast model for snappy voice replies; blank falls back to the main chat model
+        val talkModel = prefs.getString("talk_model", "")?.trim()?.ifBlank { null }
+        AppStore.send(text, {
             android.widget.Toast.makeText(ctx, "Set your API key in Settings",
                 android.widget.Toast.LENGTH_SHORT).show()
             awaitingReply = false; phase = "idle"
-        }
+        }, modelOverride = talkModel)
     }
 
     val listener = object : RecognitionListener {

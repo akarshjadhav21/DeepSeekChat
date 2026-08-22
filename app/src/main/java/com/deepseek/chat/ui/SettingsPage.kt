@@ -59,6 +59,7 @@ fun SettingsPage() {
     var ghRepos by remember { mutableStateOf(prefs.getString("gh_repo", "") ?: "") }
     var base by remember { mutableStateOf(prefs.getString("base_url", NviClient.DEFAULT_BASE) ?: NviClient.DEFAULT_BASE) }
     var effort by remember { mutableStateOf(prefs.getString("effort", "high") ?: "high") }
+    var talkModel by remember { mutableStateOf(prefs.getString("talk_model", "") ?: "") }
     var agentAuto by remember { mutableStateOf(AppStore.agentAuto) }
     var reportsOn by remember { mutableStateOf(prefs.getBoolean("report_enabled", false)) }
     var reportsHours by remember { mutableStateOf(prefs.getInt("report_hours", 12)) }
@@ -112,6 +113,7 @@ fun SettingsPage() {
                     .putString("base_url", base.trim().ifBlank { NviClient.DEFAULT_BASE })
                     .putString("effort",
                         if (effort in listOf("high","medium","low")) effort else "high")
+                    .putString("talk_model", talkModel.trim())
                     .putBoolean("agent_auto", agentAuto)
                     .commit()
                 if (ok && prefs.getString("api_key", "") == key.trim()) null
@@ -146,6 +148,10 @@ fun SettingsPage() {
                             label = { Text(e) }, shape = CircleShape)
                     }
                 }
+                Field(talkModel, { talkModel = it },
+                    "🎙 Voice reply model (blank = main model)")
+                Text("Pick a fast model for Talk — deepseek queues 4+ min on the free tier. Example: meta/llama-3.1-8b-instruct",
+                    color = C.textLow, fontSize = 11.sp)
             }
             Section("🤖 Agent") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -215,8 +221,8 @@ fun SettingsPage() {
             }
 
             Section("ℹ️ About") {
-                Text("DeepSeek Chat v3.3.0 · Builder+", color = C.textMid, fontSize = 13.sp)
-                Text("Plan-mode agent · scheduled reports · templates & one-tap releases · voice · vision. Free keys: build.nvidia.com",
+                Text("DeepSeek Chat v3.4.1 · Talk overhaul", color = C.textMid, fontSize = 13.sp)
+                Text("Agent device actions · plan mode · scheduled reports · templates & one-tap releases · voice · vision. Free keys: build.nvidia.com",
                     color = C.textLow, fontSize = 12.sp)
             }
 
