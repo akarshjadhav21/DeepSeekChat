@@ -14,7 +14,7 @@ import android.widget.Toast
 
 class SettingsActivity : Activity() {
 
-    private val prefs by lazy { getSharedPreferences("dsprefs", MODE_PRIVATE) }
+    private val prefs by lazy { SecurePrefs.get(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

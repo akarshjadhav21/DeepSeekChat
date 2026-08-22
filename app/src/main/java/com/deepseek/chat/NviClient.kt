@@ -25,6 +25,7 @@ object NviClient {
     private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
 
     const val DEFAULT_MODEL = "deepseek-ai/deepseek-v4-flash-0731"
+    const val STOP = "__user_stopped__"
 
     fun buildBody(model: String, messages: List<Msg>, effort: String = "high"): JSONObject {
         val arr = JSONArray()
@@ -63,7 +64,7 @@ object NviClient {
         val call = client.newCall(request)
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                onDone(cleanError(e))
+                onDone(if (call.isCanceled()) IOException(STOP) else cleanError(e))
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -100,7 +101,7 @@ object NviClient {
                     }
                     onDone(null)
                 } catch (e: Exception) {
-                    onDone(cleanError(e))
+                    onDone(if (call.isCanceled()) IOException(STOP) else cleanError(e))
                 } finally {
                     response.close()
                 }

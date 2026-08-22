@@ -2,6 +2,9 @@ package com.deepseek.chat
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
@@ -13,23 +16,30 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.widget.TextView
 import android.widget.Toast
+import java.util.UUID
 
 class MainActivity : Activity() {
 
-    private val prefs by lazy { getSharedPreferences("dsprefs", MODE_PRIVATE) }
+    private val prefs by lazy { SecurePrefs.get(this) }
     private val handler = Handler(Looper.getMainLooper())
 
-    private val history = mutableListOf<Msg>()
+    private val chats = mutableListOf<Chat>()
+    private var activeIdx = 0
+    private var history = mutableListOf<Msg>()
+
     private val uiItems = mutableListOf<Item>()
 
     private lateinit var adapter: ChatAdapter
     private lateinit var input: EditText
+    private lateinit var sendBtn: Button
+    private lateinit var titleView: TextView
 
     private var activeCall: okhttp3.Call? = null
     private var busy = false
@@ -82,7 +92,7 @@ class MainActivity : Activity() {
                     tv.background = bubbleBg(Color.parseColor("#262626"))
                     tv.setTextColor(Color.WHITE)
                     tv.setTypeface(Typeface.DEFAULT)
-                    tv.text = item.text
+                    tv.text = Markdown.render(item.text.toString())
                 }
             }
             tv.layoutParams = lp
@@ -96,7 +106,7 @@ class MainActivity : Activity() {
         tv.setPadding(pad, pad / 2 + 4, pad, pad / 2 + 4)
         tv.textSize = 15f
         tv.maxWidth = (resources.displayMetrics.widthPixels * 0.80).toInt()
-        tv.setTextIsSelectable(true)
+        tv.setTextIsSelectable(false)
         return tv
     }
 
@@ -106,8 +116,11 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        history.addAll(ChatStore.load(this))
-        for (m in history) uiItems.add(Item(m.role, StringBuilder(m.content)))
+        chats.addAll(ChatStore.list(this))
+        if (chats.isEmpty()) chats.add(Chat(UUID.randomUUID().toString(), "New chat"))
+        activeIdx = chats.size - 1
+        history = chats[activeIdx].msgs
+        rebuildUi()
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -132,6 +145,10 @@ class MainActivity : Activity() {
                     this@MainActivity.adapter.notifyDataSetChanged()
                 }
             }
+            setOnItemLongClickListener { _, _, pos, _ ->
+                showBubbleMenu(pos)
+                true
+            }
         }
         root.addView(list, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -139,7 +156,23 @@ class MainActivity : Activity() {
         root.addView(makeInputBar())
 
         setContentView(root)
+        refreshTitle()
     }
+
+    private fun rebuildUi() {
+        uiItems.clear()
+        for (m in history) uiItems.add(Item(m.role, StringBuilder(m.content)))
+        if (::adapter.isInitialized) adapter.notifyDataSetChanged()
+    }
+
+    private fun refreshTitle() {
+        if (::titleView.isInitialized) {
+            val t = chats[activeIdx].title
+            titleView.text = if (t.length > 16) t.take(16) + "…" else t
+        }
+    }
+
+    private fun persist() = ChatStore.saveAll(this, chats)
 
     private fun makeTopBar(): View {
         val bar = LinearLayout(this).apply {
@@ -148,15 +181,15 @@ class MainActivity : Activity() {
             setPadding(24, 24, 24, 24)
             setBackgroundColor(Color.parseColor("#0D0D0D"))
         }
-        val title = TextView(this).apply {
-            text = "DeepSeek Chat"
-            textSize = 18f
+        titleView = TextView(this).apply {
+            textSize = 17f
             setTypeface(Typeface.DEFAULT_BOLD)
             setTextColor(Color.WHITE)
         }
-        bar.addView(title, LinearLayout.LayoutParams(0,
+        bar.addView(titleView, LinearLayout.LayoutParams(0,
             ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        bar.addView(smallButton("New") { confirmNewChat() })
+        bar.addView(smallButton("💬") { showChatsDialog() })
+        bar.addView(smallButton("New") { newChat() })
         bar.addView(smallButton("⚙") { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) })
         return bar
     }
@@ -169,6 +202,130 @@ class MainActivity : Activity() {
             background = null
             setOnClickListener { onClick() }
         }
+
+    private fun newChat() {
+        stopStreaming()
+        chats.add(Chat(UUID.randomUUID().toString(), "New chat"))
+        activeIdx = chats.size - 1
+        history = chats[activeIdx].msgs
+        persist()
+        rebuildUi()
+        refreshTitle()
+        input.setText("")
+        Toast.makeText(this, "New chat ✓", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun switchChat(idx: Int) {
+        stopStreaming()
+        activeIdx = idx
+        history = chats[activeIdx].msgs
+        rebuildUi()
+        refreshTitle()
+        input.setText("")
+    }
+
+    private fun showChatsDialog() {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 16, 24, 8)
+        }
+        val lv = ListView(this).apply {
+            divider = null
+        }
+        val dlgTitles = chats.mapIndexed { i, c ->
+            (if (i == activeIdx) "▶ " else "") + "${c.title}  ·  ${c.msgs.size} msgs"
+        }
+        lv.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, dlgTitles)
+        container.addView(lv, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        var dialogRef: AlertDialog? = null
+        row.addView(smallButton("＋ New") {
+            dialogRef?.dismiss()
+            newChat()
+        })
+        row.addView(smallButton("🗑 Delete") {
+            dialogRef?.dismiss()
+            confirmDeleteChat()
+        })
+        container.addView(row)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Chats (${chats.size})")
+            .setView(container)
+            .setNegativeButton("Close", null)
+            .create()
+        dialogRef = dialog
+        lv.setOnItemClickListener { _, _, pos, _ ->
+            dialog.dismiss()
+            switchChat(pos)
+        }
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.92).toInt(),
+            (resources.displayMetrics.heightPixels * 0.7).toInt())
+    }
+
+    private fun confirmDeleteChat() {
+        AlertDialog.Builder(this)
+            .setTitle("Delete chat")
+            .setMessage("\"${chats[activeIdx].title}\" will be deleted permanently.")
+            .setPositiveButton("Delete") { _, _ ->
+                stopStreaming()
+                chats.removeAt(activeIdx)
+                if (chats.isEmpty()) chats.add(Chat(UUID.randomUUID().toString(), "New chat"))
+                activeIdx = 0
+                history = chats[0].msgs
+                persist()
+                rebuildUi()
+                refreshTitle()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showBubbleMenu(pos: Int) {
+        val item = uiItems.getOrNull(pos) ?: return
+        val opts = mutableListOf("📋 Copy")
+        if (item.type == "assistant" || item.type == "user") opts.add("📤 Share")
+        if (item.type == "assistant") opts.add("</> Copy code")
+        val canRegen = !busy && pos == uiItems.lastIndex &&
+            item.type == "assistant" && history.isNotEmpty()
+        if (canRegen) opts.add("↻ Regenerate")
+
+        AlertDialog.Builder(this)
+            .setItems(opts.toTypedArray()) { _, which ->
+                when (opts[which]) {
+                    "📋 Copy" -> copyText(item.text.toString())
+                    "📤 Share" -> shareText(item.text.toString())
+                    "</> Copy code" -> {
+                        val code = Markdown.codeBlocks(item.text.toString())
+                        if (code.isBlank()) Toast.makeText(this,
+                            "No code block found", Toast.LENGTH_SHORT).show()
+                        else copyText(code)
+                    }
+                    "↻ Regenerate" -> regenerate()
+                }
+            }
+            .show()
+    }
+
+    private fun copyText(text: String) {
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("DeepSeek", text))
+        Toast.makeText(this, "Copied ✓", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun shareText(text: String) {
+        val i = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        startActivity(Intent.createChooser(i, "Share via"))
+    }
 
     private fun makeInputBar(): View {
         val bar = LinearLayout(this).apply {
@@ -197,7 +354,7 @@ class MainActivity : Activity() {
         bar.addView(inputWrap, LinearLayout.LayoutParams(0,
             ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, (8 * density).toInt(), 0) })
 
-        bar.addView(Button(this).apply {
+        sendBtn = Button(this).apply {
             text = "Send"
             textSize = 14f
             setTextColor(Color.WHITE)
@@ -205,26 +362,23 @@ class MainActivity : Activity() {
                 setColor(Color.parseColor("#1565C0"))
                 cornerRadius = 32f
             }
-            setOnClickListener { send() }
             setPadding(16, 8, 16, 8)
-        })
+        }
+        sendBtn.setOnClickListener {
+            if (busy) stopStreaming() else send()
+        }
+        bar.addView(sendBtn)
         return bar
     }
 
-    private fun confirmNewChat() {
-        AlertDialog.Builder(this)
-            .setTitle("New chat")
-            .setMessage("Clear this conversation? It cannot be undone.")
-            .setPositiveButton("Clear") { _, _ ->
-                activeCall?.cancel()
-                busy = false
-                history.clear()
-                uiItems.clear()
-                ChatStore.clear(this)
-                adapter.notifyDataSetChanged()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+    private fun setBusyUi(b: Boolean) {
+        busy = b
+        sendBtn.text = if (b) "■ Stop" else "Send"
+    }
+
+    private fun stopStreaming() {
+        activeCall?.cancel()
+        activeCall = null
     }
 
     private fun send() {
@@ -238,24 +392,45 @@ class MainActivity : Activity() {
             startActivity(Intent(this, SettingsActivity::class.java))
             return
         }
+
+        if (chats[activeIdx].title == "New chat") {
+            chats[activeIdx].title = ChatStore.guessTitle(listOf(Msg("user", text)))
+            refreshTitle()
+        }
+
+        input.setText("")
+        history.add(Msg("user", text))
+        uiItems.add(Item("user", StringBuilder(text)))
+        persist()
+        adapter.notifyDataSetChanged()
+        startStream()
+    }
+
+    private fun regenerate() {
+        if (busy) return
+        while (history.isNotEmpty() && history.last().role == "assistant") {
+            history.removeAt(history.size - 1)
+            uiItems.removeAt(uiItems.size - 1)
+        }
+        if (history.isEmpty() || history.last().role != "user") {
+            adapter.notifyDataSetChanged()
+            return
+        }
+        persist()
+        adapter.notifyDataSetChanged()
+        startStream()
+    }
+
+    private fun startStream() {
+        val apiKey = prefs.getString("api_key", "") ?: ""
         val model = prefs.getString("model", NviClient.DEFAULT_MODEL)?.takeIf { it.isNotBlank() }
             ?: NviClient.DEFAULT_MODEL
         val effort = prefs.getString("effort", null)?.takeIf { it.isNotBlank() } ?: "high"
 
-        busy = true
-        input.setText("")
-
-        history.add(Msg("user", text))
-        ChatStore.save(this, history)
-        uiItems.add(Item("user", StringBuilder(text)))
-        adapter.notifyDataSetChanged()
+        setBusyUi(true)
 
         var thinking: StringBuilder? = null
         var content: StringBuilder? = null
-
-        fun refresh() {
-            adapter.notifyDataSetChanged()
-        }
 
         activeCall = NviClient.stream(apiKey, model, history.toList(), effort,
             onThinking = { chunk -> handler.post {
@@ -265,7 +440,7 @@ class MainActivity : Activity() {
                         uiItems.add(Item("thinking", thinking!!))
                     }
                     thinking!!.append(chunk)
-                    refresh()
+                    adapter.notifyDataSetChanged()
                 }
             }},
             onContent = { chunk -> handler.post {
@@ -274,22 +449,23 @@ class MainActivity : Activity() {
                     uiItems.add(Item("assistant", content!!))
                 }
                 content!!.append(chunk)
-                refresh()
+                adapter.notifyDataSetChanged()
             }},
             onDone = { err -> handler.post {
-                busy = false
-                if (err != null) {
+                val stopped = err?.message == NviClient.STOP
+                setBusyUi(false)
+                if (err != null && !stopped) {
                     uiItems.add(Item("error", StringBuilder(err.message ?: "Error")))
                 } else if ((content == null || content!!.isBlank()) &&
                            (thinking != null && thinking!!.isNotBlank())) {
                     uiItems.add(Item("assistant", StringBuilder("(model replied with thinking only)")))
                 }
-                val reply = content?.toString().orEmpty().ifBlank { "" }
-                if (err == null && reply.isNotEmpty()) {
+                val reply = content?.toString().orEmpty()
+                if ((err == null || stopped) && reply.isNotBlank()) {
                     history.add(Msg("assistant", reply))
-                    ChatStore.save(this, history)
+                    persist()
                 }
-                refresh()
+                adapter.notifyDataSetChanged()
             }}
         )
     }
