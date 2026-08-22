@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.deepseek.chat.GitHubClient
 import com.deepseek.chat.NviClient
+import com.deepseek.chat.RepoEntry
+import com.deepseek.chat.RunInfo
 import com.deepseek.chat.engine.AppStore
 import java.io.File
 
@@ -36,11 +38,11 @@ fun BuilderPage() {
     var repo by remember { mutableStateOf(repos.firstOrNull() ?: "") }
     var branch by remember { mutableStateOf("main") }
     var path by remember { mutableStateOf("") }
-    var entries by remember { mutableStateOf<List<GitHubClient.RepoEntry>>(emptyList()) }
+    var entries by remember { mutableStateOf<List<RepoEntry>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Pair<String, Pair<String, String?>>?>(null) } // path, (content, sha)
-    var run by remember { mutableStateOf<GitHubClient.RunInfo?>(null) }
+    var run by remember { mutableStateOf<RunInfo?>(null) }
     var uploading by remember { mutableStateOf(false) }
 
     fun loadDir(p: String) {

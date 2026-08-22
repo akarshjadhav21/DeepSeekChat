@@ -37,7 +37,7 @@ private fun Field(value: String, onChange: (String) -> Unit,
         modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
         label = { Text(label, color = C.textMid, fontSize = 12.sp) },
         singleLine = true, visualTransformation =
-            if (secret) PasswordVisualTransformation() else androidx.compose.ui.visualTransformation.VisualTransformation.None,
+            if (secret) PasswordVisualTransformation() else VisualTransformation.None,
         shape = RoundedCornerShape(14.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = C.textHi, unfocusedTextColor = C.textHi,
