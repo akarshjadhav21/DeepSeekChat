@@ -28,7 +28,8 @@ object AppStore {
 
     var agentOn by mutableStateOf(false)
     var agentAuto by mutableStateOf(false)
-    private var agentSteps = 0
+    var agentSteps by mutableStateOf(0)
+        private set
 
     var pendingImages by mutableStateOf<List<File>>(emptyList())
     var visionPrompt by mutableStateOf<Boolean?>(null) // true=ask switch dialog

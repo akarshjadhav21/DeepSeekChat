@@ -18,15 +18,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.deepseek.chat.NviClient
 import com.deepseek.chat.engine.AppStore
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 object ModelsRepo {
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS).build()
+
+    private val pinger = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(35, TimeUnit.SECONDS).build()
 
     fun visionCapable(id: String) = listOf("vision", "-vl", "neva", "vila", "kosmos")
         .any { id.lowercase().contains(it) }
@@ -44,6 +53,31 @@ object ModelsRepo {
             }
             return ids.sortedWith(compareBy({ !it.contains("deepseek") }, { it }))
         }
+    }
+
+    /** Tiny 1-token completion. Returns ok | slow | limit | dead */
+    fun probe(base: String, key: String, id: String): String {
+        val body = JSONObject().put("model", id)
+            .put("messages", JSONArray().put(
+                JSONObject().put("role", "user").put("content", "hi")))
+            .put("max_tokens", 1).put("stream", false)
+        val req = Request.Builder()
+            .url(base.trimEnd('/') + "/v1/chat/completions")
+            .header("Authorization", "Bearer $key")
+            .post(body.toString().toRequestBody("application/json".toMediaTypeOrNull()))
+            .build()
+        val t0 = System.currentTimeMillis()
+        try {
+            pinger.newCall(req).execute().use { r ->
+                return when {
+                    r.isSuccessful -> if (System.currentTimeMillis() - t0 > 15000) "slow" else "ok"
+                    r.code == 429 -> "limit"
+                    else -> "dead"
+                }
+            }
+        } catch (e: java.io.IOException) {
+            return if (e.message?.contains("timeout", true) == true) "slow" else "dead"
+        } catch (_: Exception) { return "dead" }
     }
 }
 
@@ -70,6 +104,32 @@ fun ModelsPage() {
     val prefs = AppStore.prefs()
     var chatModel by remember { mutableStateOf(prefs.getString("model", "") ?: "") }
     var visionModel by remember { mutableStateOf(prefs.getString("vision_model", "") ?: "") }
+
+    var health by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var checking by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf("") }
+
+    fun runCheck(targets: List<String>) {
+        if (checking || targets.isEmpty()) return
+        checking = true
+        val base = prefs.getString("base_url", NviClient.DEFAULT_BASE) ?: NviClient.DEFAULT_BASE
+        val key = prefs.getString("api_key", "") ?: ""
+        val sem = Semaphore(8)
+        val done = AtomicInteger(0)
+        for (id in targets) {
+            health = health + (id to "testing")
+            sem.acquire()
+            Thread {
+                val st = ModelsRepo.probe(base, key, id)
+                AppStore.handler.post {
+                    health = health + (id to st)
+                    progress = "${done.incrementAndGet()}/${targets.size}"
+                    if (done.get() == targets.size) checking = false
+                }
+                sem.release()
+            }.start()
+        }
+    }
 
     fun load() {
         loading = true; error = null
@@ -107,6 +167,23 @@ fun ModelsPage() {
                 FilterChip(selected = filter == f, onClick = { filter = f },
                     label = { Text(f.label, fontSize = 12.sp) },
                     shape = CircleShape)
+            }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(bottom = 8.dp)) {
+            Button(onClick = {
+                runCheck((models ?: emptyList())
+                    .filter { it.contains(query, true) && filter.matches(it) }.take(60))
+            }, enabled = !checking, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
+                Text(if (checking) "⏳ $progress" else "🩺 Check which work", fontSize = 13.sp)
+            }
+            if (health.isNotEmpty()) {
+                Spacer(Modifier.width(10.dp))
+                val ok = health.values.count { it == "ok" }
+                val slow = health.values.count { it == "slow" }
+                val dead = health.values.count { it == "dead" }
+                Text("✅$ok  🐌$slow  ❌$dead", color = C.textMid, fontSize = 12.sp)
             }
         }
 
@@ -150,6 +227,13 @@ fun ModelsPage() {
                                         Badge(text = "vision 👁", C.accent2)
                                     if (isChat) Badge(text = "chat ✓", C.green)
                                     if (isVision) Badge(text = "vision default", C.amber)
+                                    when (health[id]) {
+                                        "ok" -> Badge("✅ works", C.green)
+                                        "slow" -> Badge("🐌 slow", C.amber)
+                                        "limit" -> Badge("🔒 limited", C.textMid)
+                                        "dead" -> Badge("❌ dead", C.red)
+                                        "testing" -> Badge("⏳ …", C.accent)
+                                    }
                                 }
                             }
                         }
@@ -157,7 +241,7 @@ fun ModelsPage() {
                 }
             }
         }
-        Text("Tap = use for chat · Long-press = set as vision default",
+        Text("Tap = use for chat · Long-press = set as vision default · 🩺 tests each model with a 1-token ping (🐌 = no answer in 35s)",
             color = C.textLow, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
     }
 }

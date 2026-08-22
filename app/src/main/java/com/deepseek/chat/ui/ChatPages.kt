@@ -169,6 +169,8 @@ fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> U
                 if (AppStore.agentOn) Box(Modifier.size(7.dp).clip(CircleShape)
                     .background(C.green).align(Alignment.TopEnd))
             }
+            if (AppStore.agentOn) Text("${AppStore.agentSteps}/${com.deepseek.chat.Agent.MAX_STEPS}",
+                color = C.amber, fontSize = 10.sp, modifier = Modifier.padding(start = 2.dp))
         }
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
@@ -221,9 +223,20 @@ fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> U
         }
     }
 
+    // clear global one-shot state so it can't leak into other chats
+    DisposableEffect(chatId) {
+        onDispose {
+            AppStore.pendingConfirm = null
+            AppStore.thinkingText = null
+            AppStore.toolText = null
+            AppStore.errorText = null
+        }
+    }
+
     // agent command confirmation
     AppStore.pendingConfirm?.let { c ->
-        AlertDialog(onDismissRequest = {}, title = { Text("🤖 Run this command?") },
+        AlertDialog(onDismissRequest = { AppStore.denyPending() },
+            title = { Text("🤖 Run this command?") },
             text = { Text(c.cmd, fontFamily = mono(), fontSize = 13.sp) },
             confirmButton = { Button(onClick = { AppStore.approvePending() }) { Text("Run") } },
             dismissButton = { TextButton(onClick = { AppStore.denyPending() }) { Text("Deny") } })

@@ -165,7 +165,7 @@ fun SettingsPage() {
             }
 
             Section("ℹ️ About") {
-                Text("DeepSeek Chat v3.1 · Talk edition", color = C.textMid, fontSize = 13.sp)
+                Text("DeepSeek Chat v3.1.1 · Talk edition", color = C.textMid, fontSize = 13.sp)
                 Text("Voice in 11 languages · vision · agent · builder. Free keys: build.nvidia.com",
                     color = C.textLow, fontSize = 12.sp)
             }
