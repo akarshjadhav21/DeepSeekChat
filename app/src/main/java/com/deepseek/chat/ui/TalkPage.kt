@@ -76,7 +76,7 @@ fun TalkPage() {
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             if (lang != "auto") putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
             if (lang == "auto" && Build.VERSION.SDK_INT >= 33)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_SWITCH, true)
+                putExtra(SpeechRecognizer.EXTRA_LANGUAGE_SWITCH, true)
         }
 
     fun startListening() {
