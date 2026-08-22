@@ -107,6 +107,14 @@ class MainActivity : Activity() {
                     tv.textSize = 13f
                     tv.text = item.text
                 }
+                "tool" -> {
+                    lp.gravity = Gravity.START
+                    tv.background = bubbleBg(Color.parseColor("#0F1A12"))
+                    tv.setTextColor(Color.parseColor("#7CE38B"))
+                    tv.setTypeface(Typeface.MONOSPACE)
+                    tv.textSize = 13f
+                    tv.text = item.text
+                }
                 "error" -> {
                     lp.gravity = Gravity.START
                     tv.background = bubbleBg(Color.parseColor("#4E2020"))
@@ -392,6 +400,9 @@ class MainActivity : Activity() {
         startActivity(Intent.createChooser(i, "Share via"))
     }
 
+    private var agentOn = false
+    private var agentSteps = 0
+
     private fun makeInputBar(): View {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -418,6 +429,29 @@ class MainActivity : Activity() {
         inputWrap.addView(input)
         bar.addView(inputWrap, LinearLayout.LayoutParams(0,
             ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, (8 * density).toInt(), 0) })
+
+        val agentBtn = Button(this).apply {
+            text = "🤖"
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#37474F"))
+                cornerRadius = 32f
+            }
+            setPadding(20, 8, 20, 8)
+        }
+        agentBtn.setOnClickListener {
+            agentOn = !agentOn
+            agentSteps = 0
+            agentBtn.background = GradientDrawable().apply {
+                setColor(if (agentOn) Color.parseColor("#2E7D32") else Color.parseColor("#37474F"))
+                cornerRadius = 32f
+            }
+            input.hint = if (agentOn) "Agent mode — I can run commands…" else "Ask DeepSeek anything…"
+        }
+        bar.addView(agentBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { setMargins(0, 0, (8 * density).toInt(), 0) })
 
         sendBtn = Button(this).apply {
             text = "Send"
@@ -466,6 +500,7 @@ class MainActivity : Activity() {
         input.setText("")
         history.add(Msg("user", text))
         uiItems.add(Item("user", StringBuilder(text)))
+        agentSteps = 0
         persist()
         adapter.notifyDataSetChanged()
         startStream()
@@ -493,6 +528,9 @@ class MainActivity : Activity() {
         val effort = prefs.getString("effort", null)?.takeIf { it.isNotBlank() } ?: "high"
         val baseUrl = prefs.getString("base_url", NviClient.DEFAULT_BASE)
             ?.takeIf { it.isNotBlank() } ?: NviClient.DEFAULT_BASE
+        val msgs = if (agentOn)
+            listOf(Msg("system", Agent.SYSTEM_PROMPT)) + history.toList()
+        else history.toList()
 
         setBusyUi(true)
 
@@ -506,7 +544,7 @@ class MainActivity : Activity() {
         var thinking: StringBuilder? = null
         var content: StringBuilder? = null
 
-        activeCall = NviClient.stream(apiKey, model, history.toList(), effort,
+        activeCall = NviClient.stream(apiKey, model, msgs, effort,
             onThinking = { chunk -> handler.post {
                 stopStatus()
                 if (content == null) {
@@ -553,7 +591,56 @@ class MainActivity : Activity() {
                     persist()
                 }
                 adapter.notifyDataSetChanged()
+                if (agentOn && err == null && !stopped && reply.isNotBlank()) {
+                    maybeRunAgentCmd(reply)
+                }
             }}
         )
+    }
+
+    private fun maybeRunAgentCmd(reply: String) {
+        val cmd = Agent.extractCmd(reply) ?: return
+        if (agentSteps >= Agent.MAX_STEPS) {
+            uiItems.add(Item("error", StringBuilder(
+                "Agent stopped — ${Agent.MAX_STEPS}-command limit reached. Send a message to continue.")))
+            adapter.notifyDataSetChanged()
+            return
+        }
+        if (Agent.isBlocked(cmd)) {
+            feedToolOutput("[TOOL OUTPUT]\nBLOCKED for safety: $cmd\n" +
+                "Explain why you can't do that and suggest a safe alternative.")
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("🤖 Run this command?")
+            .setMessage(cmd)
+            .setPositiveButton("Run") { _, _ ->
+                uiItems.add(Item("tool", StringBuilder("$ $cmd\n⏳ running…")))
+                adapter.notifyDataSetChanged()
+                Thread {
+                    val out = Agent.execute(cmd)
+                    handler.post {
+                        uiItems.lastOrNull()?.let {
+                            if (it.type == "tool") it.text.setLength(0).append(
+                                "$ $cmd\n${out.take(Agent.MAX_OUT)}")
+                        }
+                        adapter.notifyDataSetChanged()
+                        feedToolOutput("[TOOL OUTPUT for `$cmd`]\n${out.take(Agent.MAX_OUT)}\n" +
+                            "Continue with the next command or write your final answer.")
+                    }
+                }.start()
+            }
+            .setNegativeButton("Deny") { _, _ ->
+                feedToolOutput("[TOOL OUTPUT]\nUser DENIED: $cmd\nAsk what they'd like instead.")
+            }
+            .show()
+    }
+
+    private fun feedToolOutput(text: String) {
+        agentSteps++
+        history.add(Msg("user", text))
+        uiItems.add(Item("user", StringBuilder(text)))
+        adapter.notifyDataSetChanged()
+        startStream()
     }
 }
