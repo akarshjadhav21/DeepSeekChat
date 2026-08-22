@@ -40,7 +40,7 @@ object SecurePrefs {
         try {
             val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
             ks.load(null)
-            ks.deleteEntry(MasterKeys.DEFAULT_MASTER_KEY_ALIAS)
+            ks.deleteEntry("_androidx_security_master_key_")
         } catch (_: Exception) {
         }
     }

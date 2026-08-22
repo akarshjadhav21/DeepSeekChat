@@ -148,41 +148,41 @@ class SettingsActivity : Activity() {
                 setColor(Color.parseColor("#1565C0"))
                 cornerRadius = 32f
             }
-            setOnClickListener {
-                val effortIn = effortField.text.toString().trim().lowercase()
-                val effortVal = if (effortIn in listOf("high", "medium", "low")) effortIn else "high"
-                val keyToSave = keyField.text.toString().trim()
-                saveBtn.isEnabled = false
-                Thread {
-                    val result = try {
-                        val ok = prefs.edit()
-                            .putString("api_key", keyToSave)
-                            .putString("model", modelField.text.toString().trim()
-                                .ifBlank { NviClient.DEFAULT_MODEL })
-                            .putString("base_url", baseUrlField.text.toString().trim()
-                                .ifBlank { NviClient.DEFAULT_BASE })
-                            .putString("effort", effortVal)
-                            .putString("gh_token", ghTokenField.text.toString().trim())
-                            .putString("gh_repo", ghRepoField.text.toString().trim())
-                            .commit()
-                        if (ok && prefs.getString("api_key", "") == keyToSave) null
-                        else IOException("storage did not keep the value")
-                    } catch (e: Exception) {
-                        e
+        }
+        saveBtn.setOnClickListener {
+            val effortIn = effortField.text.toString().trim().lowercase()
+            val effortVal = if (effortIn in listOf("high", "medium", "low")) effortIn else "high"
+            val keyToSave = keyField.text.toString().trim()
+            saveBtn.isEnabled = false
+            Thread {
+                val result = try {
+                    val ok = prefs.edit()
+                        .putString("api_key", keyToSave)
+                        .putString("model", modelField.text.toString().trim()
+                            .ifBlank { NviClient.DEFAULT_MODEL })
+                        .putString("base_url", baseUrlField.text.toString().trim()
+                            .ifBlank { NviClient.DEFAULT_BASE })
+                        .putString("effort", effortVal)
+                        .putString("gh_token", ghTokenField.text.toString().trim())
+                        .putString("gh_repo", ghRepoField.text.toString().trim())
+                        .commit()
+                    if (ok && prefs.getString("api_key", "") == keyToSave) null
+                    else IOException("storage did not keep the value")
+                } catch (e: Exception) {
+                    e
+                }
+                runOnUiThread {
+                    saveBtn.isEnabled = true
+                    if (result == null) {
+                        Toast.makeText(this@SettingsActivity,
+                            "Saved ✓", Toast.LENGTH_SHORT).show()
+                        finish()
+                    } else {
+                        Toast.makeText(this@SettingsActivity,
+                            "Save failed: ${result.message}", Toast.LENGTH_LONG).show()
                     }
-                    runOnUiThread {
-                        saveBtn.isEnabled = true
-                        if (result == null) {
-                            Toast.makeText(this@SettingsActivity,
-                                "Saved ✓", Toast.LENGTH_SHORT).show()
-                            finish()
-                        } else {
-                            Toast.makeText(this@SettingsActivity,
-                                "Save failed: ${result.message}", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                }.start()
-            }
+                }
+            }.start()
         }
         root.addView(saveBtn, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
