@@ -9,6 +9,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -150,6 +151,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestAllFilesAccessIfNeeded()
 
         chats.addAll(ChatStore.list(this))
         if (chats.isEmpty()) chats.add(Chat(UUID.randomUUID().toString(), "New chat"))
@@ -401,6 +403,7 @@ class MainActivity : Activity() {
     }
 
     private var agentOn = false
+    private var agentAuto = false
     private var agentSteps = 0
 
     private fun makeInputBar(): View {
@@ -448,6 +451,14 @@ class MainActivity : Activity() {
                 cornerRadius = 32f
             }
             input.hint = if (agentOn) "Agent mode — I can run commands…" else "Ask DeepSeek anything…"
+        }
+        agentBtn.setOnLongClickListener {
+            agentAuto = !agentAuto
+            Toast.makeText(this,
+                if (agentAuto) "⚡ Auto-run ON — commands execute without asking (blocklist still enforced)"
+                else "Auto-run OFF — every command needs your OK",
+                Toast.LENGTH_LONG).show()
+            true
         }
         bar.addView(agentBtn, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
@@ -606,38 +617,91 @@ class MainActivity : Activity() {
             adapter.notifyDataSetChanged()
             return
         }
+        // Special app-management actions via system UI
+        if (cmd.startsWith("app-uninstall ")) {
+            val pkg = cmd.removePrefix("app-uninstall ").trim()
+            uiItems.add(Item("tool", StringBuilder("🤖 Opening system uninstall dialog for $pkg…")))
+            adapter.notifyDataSetChanged()
+            try {
+                startActivity(Intent(Intent.ACTION_DELETE,
+                    Uri.parse("package:$pkg")))
+                feedToolOutput("[TOOL OUTPUT]\nSystem uninstall dialog opened for $pkg. " +
+                    "Ask the user what happened (uninstalled or cancelled), then continue.")
+            } catch (e: Exception) {
+                feedToolOutput("[TOOL OUTPUT]\nCould not open uninstaller: ${e.message}")
+            }
+            return
+        }
+        if (cmd.startsWith("app-install ")) {
+            val path = cmd.removePrefix("app-install ").trim().removeSurrounding("\"")
+            val f = java.io.File(path)
+            uiItems.add(Item("tool", StringBuilder("🤖 Opening installer for $path…")))
+            adapter.notifyDataSetChanged()
+            try {
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    this, "$packageName.fileprovider", f)
+                val i = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(i)
+                feedToolOutput("[TOOL OUTPUT]\nInstaller opened for $path. " +
+                    "Ask the user whether it installed, then continue.")
+            } catch (e: Exception) {
+                feedToolOutput("[TOOL OUTPUT]\nInstall failed to open: ${e.message}. " +
+                    "Tip: the APK must be inside the app's own files dir or shared storage.")
+            }
+            return
+        }
         if (Agent.isBlocked(cmd)) {
             feedToolOutput("[TOOL OUTPUT]\nBLOCKED for safety: $cmd\n" +
                 "Explain why you can't do that and suggest a safe alternative.")
             return
         }
+        fun runConfirmed() {
+            uiItems.add(Item("tool", StringBuilder("$ $cmd\n⏳ running…")))
+            adapter.notifyDataSetChanged()
+            Thread {
+                val out = Agent.execute(cmd)
+                handler.post {
+                    uiItems.lastOrNull()?.let {
+                        if (it.type == "tool") {
+                            it.text.setLength(0)
+                            it.text.append("$ $cmd\n${out.take(Agent.MAX_OUT)}")
+                        }
+                    }
+                    adapter.notifyDataSetChanged()
+                    feedToolOutput("[TOOL OUTPUT for `$cmd`]\n${out.take(Agent.MAX_OUT)}\n" +
+                        "Continue with the next command or write your final answer.")
+                }
+            }.start()
+        }
+        if (agentAuto) {
+            runConfirmed()
+            return
+        }
         AlertDialog.Builder(this)
             .setTitle("🤖 Run this command?")
             .setMessage(cmd)
-            .setPositiveButton("Run") { _, _ ->
-                uiItems.add(Item("tool", StringBuilder("$ $cmd\n⏳ running…")))
-                adapter.notifyDataSetChanged()
-                Thread {
-                    val out = Agent.execute(cmd)
-                    handler.post {
-                        uiItems.lastOrNull()?.let {
-                            if (it.type == "tool") it.text.setLength(0).append(
-                                "$ $cmd\n${out.take(Agent.MAX_OUT)}")
-                        }
-                        adapter.notifyDataSetChanged()
-                        feedToolOutput("[TOOL OUTPUT for `$cmd`]\n${out.take(Agent.MAX_OUT)}\n" +
-                            "Continue with the next command or write your final answer.")
-                    }
-                }.start()
-            }
+            .setPositiveButton("Run") { _, _ -> runConfirmed() }
             .setNegativeButton("Deny") { _, _ ->
                 feedToolOutput("[TOOL OUTPUT]\nUser DENIED: $cmd\nAsk what they'd like instead.")
             }
             .show()
     }
 
-    private fun feedToolOutput(text: String) {
-        agentSteps++
+    private fun requestAllFilesAccessIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT >= 30 &&
+            !android.os.Environment.isExternalStorageManager()) {
+            try {
+                startActivity(Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:$packageName")))
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun feedToolOutput(text: String) {        agentSteps++
         history.add(Msg("user", text))
         uiItems.add(Item("user", StringBuilder(text)))
         adapter.notifyDataSetChanged()

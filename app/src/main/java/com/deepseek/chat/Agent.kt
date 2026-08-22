@@ -6,7 +6,7 @@ object Agent {
 
     const val MAX_STEPS = 6
     private const val TIMEOUT_S = 20L
-    private const val MAX_OUT = 4000
+    const val MAX_OUT = 4000
 
     val SYSTEM_PROMPT = """
 You are an AI agent running INSIDE an Android chat app on the user's phone.
@@ -23,7 +23,10 @@ Rules:
 - After seeing output, either run another command or write your final answer in plain text.
 - Max ${MAX_STEPS} commands per task — be efficient, don't repeat commands.
 - Only binaries in /system/bin or /system/xbin exist (toybox): ls cat df ps top netstat ip ping getprop dumpsys screencap date uptime id whoami printenv stat wc head tail grep sed find sleep uname vmstat nproc settings am pm input service logcat wm
-- Useful recipes: battery=dumpsys battery | storage=df -h /sdcard | memory=cat /proc/meminfo | apps=pm list packages -3 | screen=screencap -p /sdcard/dcim_screen.png | display=wm size | sensors=dumpsys sensorservice | wifi=ip route | props=getprop ro.product.model
+- Useful recipes: battery=dumpsys battery | storage=df -h /sdcard | memory=cat /proc/meminfo | apps=pm list packages -3 | appinfo=dumpsys package NAME | screen=screencap -p /sdcard/dcim_screen.png | display=wm size | wifi=ip route | props=getprop ro.product.model
+- Special actions (NOT shell commands, use inside a ```run block):
+    app-install /path/to/file.apk     -> opens system installer
+    app-uninstall com.package.name    -> opens system uninstall dialog
 - Never assume root. Some paths need storage permission granted to this app.
 """.trim().trimIndent()
 
