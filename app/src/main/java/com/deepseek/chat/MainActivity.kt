@@ -44,6 +44,25 @@ class MainActivity : Activity() {
     private var activeCall: okhttp3.Call? = null
     private var busy = false
 
+    private var statusItem: Item? = null
+    private var statusStart = 0L
+    private val statusTicker = object : Runnable {
+        override fun run() {
+            val si = statusItem ?: return
+            val secs = ((System.currentTimeMillis() - statusStart) / 1000).toInt()
+            si.text.setLength(0)
+            si.text.append("⏳ Waiting for model… ${secs}s\n(high effort can take a while — ■ stops it)")
+            adapter.notifyDataSetChanged()
+            handler.postDelayed(this, 5000)
+        }
+    }
+
+    private fun stopStatus() {
+        handler.removeCallbacks(statusTicker)
+        statusItem?.let { if (uiItems.contains(it)) uiItems.remove(it) }
+        statusItem = null
+    }
+
     class Item(val type: String, val text: StringBuilder) {
         var expanded = false
     }
@@ -79,6 +98,14 @@ class MainActivity : Activity() {
                         "💭 Thinking… (${full.length} chars) ▸ tap to expand\n" +
                             full.substring(0, 180) + "…"
                     }
+                }
+                "status" -> {
+                    lp.gravity = Gravity.START
+                    tv.background = null
+                    tv.setTextColor(Color.parseColor("#9E9E9E"))
+                    tv.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.ITALIC))
+                    tv.textSize = 13f
+                    tv.text = item.text
                 }
                 "error" -> {
                     lp.gravity = Gravity.START
@@ -467,11 +494,19 @@ class MainActivity : Activity() {
 
         setBusyUi(true)
 
+        stopStatus()
+        statusStart = System.currentTimeMillis()
+        val si = Item("status", StringBuilder("⏳ Contacting model…"))
+        statusItem = si
+        uiItems.add(si)
+        adapter.notifyDataSetChanged()
+
         var thinking: StringBuilder? = null
         var content: StringBuilder? = null
 
         activeCall = NviClient.stream(apiKey, model, history.toList(), effort,
             onThinking = { chunk -> handler.post {
+                stopStatus()
                 if (content == null) {
                     if (thinking == null) {
                         thinking = StringBuilder()
@@ -482,6 +517,7 @@ class MainActivity : Activity() {
                 }
             }},
             onContent = { chunk -> handler.post {
+                stopStatus()
                 if (content == null) {
                     content = StringBuilder()
                     uiItems.add(Item("assistant", content!!))
@@ -489,14 +525,25 @@ class MainActivity : Activity() {
                 content!!.append(chunk)
                 adapter.notifyDataSetChanged()
             }},
+            onConnected = { handler.post {
+                statusItem?.let {
+                    it.text.setLength(0)
+                    it.text.append("⏳ Connected — waiting for first tokens…")
+                    adapter.notifyDataSetChanged()
+                }
+            }},
             onDone = { err -> handler.post {
                 val stopped = err?.message == NviClient.STOP
+                stopStatus()
                 setBusyUi(false)
                 if (err != null && !stopped) {
                     uiItems.add(Item("error", StringBuilder(err.message ?: "Error")))
                 } else if ((content == null || content!!.isBlank()) &&
                            (thinking != null && thinking!!.isNotBlank())) {
                     uiItems.add(Item("assistant", StringBuilder("(model replied with thinking only)")))
+                } else if (err == null && (content == null || content!!.isBlank())) {
+                    uiItems.add(Item("error", StringBuilder(
+                        "Empty response from model. Try again, or check the model name in ⚙ Settings.")))
                 }
                 val reply = content?.toString().orEmpty()
                 if ((err == null || stopped) && reply.isNotBlank()) {

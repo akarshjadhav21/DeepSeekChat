@@ -16,7 +16,7 @@ object NviClient {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(600, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
@@ -49,7 +49,8 @@ object NviClient {
         effort: String,
         onThinking: (String) -> Unit,
         onContent: (String) -> Unit,
-        onDone: (Throwable?) -> Unit
+        onDone: (Throwable?) -> Unit,
+        onConnected: (() -> Unit)? = null
     ): Call {
         val body = buildBody(model, messages, effort).toString().toRequestBody(JSON_TYPE)
         val request = Request.Builder()
@@ -80,24 +81,48 @@ object NviClient {
                         onDone(IOException("Empty response body"))
                         return
                     }
+                    onConnected?.invoke()
+                    var lines = 0
+                    var events = 0
                     while (true) {
                         val line = source.readUtf8Line() ?: break
+                        lines++
                         if (!line.startsWith("data:")) continue
                         val data = line.removePrefix("data:").trim()
                         if (data == "[DONE]") break
                         try {
                             val json = JSONObject(data)
+                            val errObj = json.optJSONObject("error")
+                            if (errObj != null) {
+                                events++
+                                throw IOException(
+                                    "Server error: ${errObj.optString("message", "unknown")}")
+                            }
                             val delta = json.getJSONArray("choices")
                                 .getJSONObject(0)
                                 .optJSONObject("delta") ?: continue
                             val reasoning = delta.optString("reasoning_content", "")
-                            if (reasoning.isNotEmpty()) onThinking(reasoning)
+                            if (reasoning.isNotEmpty()) {
+                                events++
+                                onThinking(reasoning)
+                            }
                             val content = delta.optString("content", "")
-                            if (content.isNotEmpty()) onContent(content)
+                            if (content.isNotEmpty()) {
+                                events++
+                                onContent(content)
+                            }
+                        } catch (e: IOException) {
+                            throw e
                         } catch (_: Exception) {
                         }
                     }
-                    onDone(null)
+                    if (events == 0) {
+                        onDone(IOException(
+                            "Model returned no data ($lines lines). " +
+                            "It may be overloaded — try again, or switch model in Settings."))
+                    } else {
+                        onDone(null)
+                    }
                 } catch (e: Exception) {
                     onDone(if (call.isCanceled()) IOException(STOP) else cleanError(e))
                 } finally {
@@ -111,8 +136,10 @@ object NviClient {
     private fun httpMessage(code: Int, body: String?): String {
         val hint = when (code) {
             401 -> "Invalid or missing API key. Check Settings."
+            403 -> "Key rejected — regenerate a free one at build.nvidia.com."
             404 -> "Model not found. Try another model name in Settings."
             429 -> "Rate limit reached on NVIDIA free tier. Wait a bit."
+            500, 502, 503 -> "NVIDIA server busy ($code). Try again shortly."
             else -> "HTTP $code"
         }
         return "$hint${if (!body.isNullOrBlank()) "\n\n$body" else ""}"
