@@ -2,64 +2,42 @@ package com.deepseek.chat
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
 
 object SecurePrefs {
 
+    // Plain local storage — encrypted prefs (AndroidKeyStore) proved unreliable
+    // on some devices: corruption caused silent save failures/data loss.
+    // One-time best-effort import of anything still readable in the old store.
     fun get(ctx: Context): SharedPreferences {
-        migrate(ctx)
-        return try {
-            create(ctx)
-        } catch (_: Exception) {
-            // Corrupt keystore/pref file (happens after updates or restores).
-            // Wipe the unreadable crypto state and retry once before falling back.
-            heal(ctx)
-            try {
-                create(ctx)
-            } catch (_: Exception) {
-                ctx.getSharedPreferences("dsprefs", Context.MODE_PRIVATE)
-            }
-        }
+        val plain = ctx.getSharedPreferences("dsprefs", Context.MODE_PRIVATE)
+        migrateFromLegacy(ctx, plain)
+        return plain
     }
 
-    private fun create(ctx: Context): SharedPreferences =
-        EncryptedSharedPreferences.create(
-            "dsprefs_secure",
-            MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
-            ctx,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
-
-    private fun heal(ctx: Context) {
+    private fun migrateFromLegacy(ctx: Context, plain: SharedPreferences) {
         try {
-            ctx.deleteSharedPreferences("dsprefs_secure")
-        } catch (_: Exception) {
-        }
-        try {
-            val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
-            ks.load(null)
-            ks.deleteEntry("_androidx_security_master_key_")
-        } catch (_: Exception) {
-        }
-    }
-
-    private fun migrate(ctx: Context) {
-        try {
-            val plain = ctx.getSharedPreferences("dsprefs", Context.MODE_PRIVATE)
-            val key = plain.getString("api_key", null)
-            if (key.isNullOrBlank()) return
-            val secure = create(ctx)
-            if (secure.getString("api_key", "").isNullOrBlank()) {
-                secure.edit()
-                    .putString("api_key", key)
-                    .putString("model", plain.getString("model", null))
-                    .putString("effort", plain.getString("effort", null))
-                    .apply()
+            if (plain.getBoolean("legacy_imported", false)) return
+            val secure = androidx.security.crypto.EncryptedSharedPreferences.create(
+                "dsprefs_secure",
+                androidx.security.crypto.MasterKeys.getOrCreate(
+                    androidx.security.crypto.MasterKeys.AES256_GCM_SPEC),
+                ctx,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+            val keys = listOf("api_key", "model", "effort", "base_url", "gh_token", "gh_repo")
+            val edit = plain.edit()
+            for (k in keys) {
+                val v = try { secure.getString(k, null) } catch (_: Exception) { null }
+                if (!v.isNullOrBlank() && plain.getString(k, "").isNullOrBlank()) {
+                    edit.putString(k, v)
+                }
             }
-            plain.edit().remove("api_key").apply()
+            edit.putBoolean("legacy_imported", true)
+            edit.apply()
         } catch (_: Exception) {
+            // Old unreadable store — nothing to rescue, continue plain.
+            plain.edit().putBoolean("legacy_imported", true).apply()
         }
     }
 }
