@@ -22,6 +22,7 @@ object NviClient {
 
     private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
 
+    const val DEFAULT_BASE = "https://integrate.api.nvidia.com"
     const val DEFAULT_MODEL = "deepseek-ai/deepseek-v4-flash-0731"
     const val STOP = "__user_stopped__"
 
@@ -50,11 +51,13 @@ object NviClient {
         onThinking: (String) -> Unit,
         onContent: (String) -> Unit,
         onDone: (Throwable?) -> Unit,
-        onConnected: (() -> Unit)? = null
+        onConnected: (() -> Unit)? = null,
+        baseUrl: String = DEFAULT_BASE
     ): Call {
         val body = buildBody(model, messages, effort).toString().toRequestBody(JSON_TYPE)
+        val base = baseUrl.trimEnd('/')
         val request = Request.Builder()
-            .url("https://integrate.api.nvidia.com/v1/chat/completions")
+            .url("$base/v1/chat/completions")
             .header("Authorization", "Bearer $apiKey")
             .header("Accept", "text/event-stream")
             .post(body)

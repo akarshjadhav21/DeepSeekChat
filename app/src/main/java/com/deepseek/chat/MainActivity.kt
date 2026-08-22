@@ -491,6 +491,8 @@ class MainActivity : Activity() {
         val model = prefs.getString("model", NviClient.DEFAULT_MODEL)?.takeIf { it.isNotBlank() }
             ?: NviClient.DEFAULT_MODEL
         val effort = prefs.getString("effort", null)?.takeIf { it.isNotBlank() } ?: "high"
+        val baseUrl = prefs.getString("base_url", NviClient.DEFAULT_BASE)
+            ?.takeIf { it.isNotBlank() } ?: NviClient.DEFAULT_BASE
 
         setBusyUi(true)
 
@@ -532,6 +534,7 @@ class MainActivity : Activity() {
                     adapter.notifyDataSetChanged()
                 }
             }},
+            baseUrl = baseUrl,
             onDone = { err -> handler.post {
                 val stopped = err?.message == NviClient.STOP
                 stopStatus()
@@ -546,8 +549,7 @@ class MainActivity : Activity() {
                         "Empty response from model. Try again, or check the model name in ⚙ Settings.")))
                 }
                 val reply = content?.toString().orEmpty()
-                if ((err == null || stopped) && reply.isNotBlank()) {
-                    history.add(Msg("assistant", reply))
+                if ((err == null || stopped) && reply.isNotBlank()) {                    history.add(Msg("assistant", reply))
                     persist()
                 }
                 adapter.notifyDataSetChanged()

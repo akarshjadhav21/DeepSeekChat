@@ -74,6 +74,12 @@ class SettingsActivity : Activity() {
         modelField.setTextSize(13f)
         root.addView(modelField)
 
+        root.addView(label("Server URL (relay if NVIDIA is blocked)").also { it.setPadding(0, dp(24), 0, dp(6)) })
+        val baseUrlField = field(prefs.getString("base_url", NviClient.DEFAULT_BASE),
+            NviClient.DEFAULT_BASE, password = false)
+        baseUrlField.setTextSize(13f)
+        root.addView(baseUrlField)
+
         root.addView(label("Thinking effort (how long it thinks)").also { it.setPadding(0, dp(24), 0, dp(6)) })
         val effortField = field(prefs.getString("effort", "high"),
             "high / medium / low", password = false)
@@ -122,6 +128,8 @@ class SettingsActivity : Activity() {
                     .putString("api_key", keyField.text.toString().trim())
                     .putString("model", modelField.text.toString().trim()
                         .ifBlank { NviClient.DEFAULT_MODEL })
+                    .putString("base_url", baseUrlField.text.toString().trim()
+                        .ifBlank { NviClient.DEFAULT_BASE })
                     .putString("effort", effortVal)
                     .putString("gh_token", ghTokenField.text.toString().trim())
                     .putString("gh_repo", ghRepoField.text.toString().trim())
