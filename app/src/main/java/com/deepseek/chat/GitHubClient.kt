@@ -118,6 +118,24 @@ object GitHubClient {
         }.run()
     }
 
+    fun putFileBinary(token: String, repo: String, branch: String, path: String,
+                bytes: ByteArray, sha: String?, message: String) {
+        val url = "$API/repos/$repo/contents/$path"
+        val bodyObj = JSONObject()
+            .put("message", message)
+            .put("content", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP))
+            .put("branch", branch)
+        if (!sha.isNullOrBlank()) bodyObj.put("sha", sha)
+        val request = req(token, url)
+            .put(bodyObj.toString().toRequestBody(JSON_TYPE))
+            .build()
+        return object : Sync<Unit>(client.newCall(request)) {
+            override fun parse(r: Response) {
+                if (!r.isSuccessful) throw IOException(httpMsg(r.code, r.body?.string(), "commit"))
+            }
+        }.run()
+    }
+
     fun putFile(token: String, repo: String, branch: String, path: String,
                 content: String, sha: String?, message: String) {
         val url = "$API/repos/$repo/contents/$path"

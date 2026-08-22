@@ -29,7 +29,22 @@ object NviClient {
     fun buildBody(model: String, messages: List<Msg>, effort: String = "high"): JSONObject {
         val arr = JSONArray()
         for (m in messages) {
-            arr.put(JSONObject().put("role", m.role).put("content", m.content))
+            val mo = JSONObject().put("role", m.role)
+            if (m.images.isEmpty()) {
+                mo.put("content", m.content)
+            } else {
+                val parts = JSONArray()
+                if (m.content.isNotBlank())
+                    parts.put(JSONObject().put("type", "text").put("text", m.content))
+                for (img in m.images) {
+                    val b64 = android.util.Base64.encodeToString(
+                        java.io.File(img).readBytes(), android.util.Base64.NO_WRAP)
+                    parts.put(JSONObject().put("type", "image_url")
+                        .put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$b64")))
+                }
+                mo.put("content", parts)
+            }
+            arr.put(mo)
         }
         return JSONObject()
             .put("model", model)
@@ -156,5 +171,27 @@ object NviClient {
         } else if (msg.contains("Unable to resolve", true) || msg.contains("network", true)) {
             IOException("No internet connection.")
         } else e
+    }
+
+    /** Small synchronous non-streaming completion (used for chat titles). */
+    fun complete(key: String, model: String, base: String, prompt: String,
+                 maxTokens: Int = 24): String {
+        val body = JSONObject()
+            .put("model", model)
+            .put("messages", org.json.JSONArray()
+                .put(JSONObject().put("role", "user").put("content", prompt)))
+            .put("max_tokens", maxTokens)
+            .put("temperature", 0.3)
+            .toString().toRequestBody(JSON_TYPE)
+        val req = Request.Builder()
+            .url(base.trimEnd('/') + "/v1/chat/completions")
+            .header("Authorization", "Bearer $key")
+            .post(body).build()
+        client.newCall(req).execute().use { r ->
+            if (!r.isSuccessful) return ""
+            val j = org.json.JSONObject(r.body?.string() ?: "")
+            return j.getJSONArray("choices").getJSONObject(0)
+                .getJSONObject("message").optString("content", "").trim()
+        }
     }
 }

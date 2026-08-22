@@ -6,7 +6,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
-data class Msg(val role: String, val content: String)
+data class Msg(val role: String, val content: String, val images: List<String> = emptyList())
 
 data class Chat(
     val id: String,
@@ -31,7 +31,11 @@ object ChatStore {
                     val ma = o.optJSONArray("msgs") ?: JSONArray()
                     for (j in 0 until ma.length()) {
                         val m = ma.getJSONObject(j)
-                        msgs.add(Msg(m.getString("role"), m.getString("content")))
+                        val imgs = mutableListOf<String>()
+                        m.optJSONArray("images")?.let { ia ->
+                            for (k in 0 until ia.length()) imgs.add(ia.getString(k))
+                        }
+                        msgs.add(Msg(m.getString("role"), m.getString("content"), imgs))
                     }
                     out.add(Chat(o.getString("id"), o.getString("title"), msgs))
                 }
@@ -72,7 +76,13 @@ object ChatStore {
             for (c in chats) {
                 val ca = JSONArray()
                 for (m in c.msgs) {
-                    ca.put(JSONObject().put("role", m.role).put("content", m.content))
+                    val mo = JSONObject().put("role", m.role).put("content", m.content)
+                    if (m.images.isNotEmpty()) {
+                        val ia = JSONArray()
+                        for (img in m.images) ia.put(img)
+                        mo.put("images", ia)
+                    }
+                    ca.put(mo)
                 }
                 arr.put(JSONObject()
                     .put("id", c.id)
