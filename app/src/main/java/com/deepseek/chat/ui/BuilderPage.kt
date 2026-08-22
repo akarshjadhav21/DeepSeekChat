@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -309,3 +310,4 @@ fun BuilderPage() {
 
 private var pendingUploadPath by mutableStateOf<String?>(null)
 private var pendingUploadBytes by mutableStateOf<ByteArray?>(null)
+private var pendingUploadRepo by mutableStateOf<String?>(null)
