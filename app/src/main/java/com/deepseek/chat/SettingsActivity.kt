@@ -1,6 +1,7 @@
 package com.deepseek.chat
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -11,10 +12,23 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 class SettingsActivity : Activity() {
 
     private val prefs by lazy { SecurePrefs.get(this) }
+
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
+
+    private lateinit var keyField: EditText
+    private lateinit var baseUrlField: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,7 +77,7 @@ class SettingsActivity : Activity() {
         root.addView(label("\nNVIDIA API Key").also {
             it.setPadding(0, dp(24), 0, dp(6))
         })
-        val keyField = field(prefs.getString("api_key", ""),
+        keyField = field(prefs.getString("api_key", ""),
             "nvapi-…  from build.nvidia.com", password = true)
         keyField.setTextSize(13f)
         root.addView(keyField)
@@ -74,8 +88,21 @@ class SettingsActivity : Activity() {
         modelField.setTextSize(13f)
         root.addView(modelField)
 
+        val pickBtn = Button(this).apply {
+            text = "📋  Show model list"
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#37474F"))
+                cornerRadius = 32f
+            }
+        }
+        pickBtn.setOnClickListener { loadModels(pickBtn, modelField) }
+        root.addView(pickBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { setMargins(0, dp(10), 0, 0) })
+
         root.addView(label("Server URL (relay if NVIDIA is blocked)").also { it.setPadding(0, dp(24), 0, dp(6)) })
-        val baseUrlField = field(prefs.getString("base_url", NviClient.DEFAULT_BASE),
+        baseUrlField = field(prefs.getString("base_url", NviClient.DEFAULT_BASE),
             NviClient.DEFAULT_BASE, password = false)
         baseUrlField.setTextSize(13f)
         root.addView(baseUrlField)
@@ -124,19 +151,37 @@ class SettingsActivity : Activity() {
             setOnClickListener {
                 val effortIn = effortField.text.toString().trim().lowercase()
                 val effortVal = if (effortIn in listOf("high", "medium", "low")) effortIn else "high"
-                prefs.edit()
-                    .putString("api_key", keyField.text.toString().trim())
-                    .putString("model", modelField.text.toString().trim()
-                        .ifBlank { NviClient.DEFAULT_MODEL })
-                    .putString("base_url", baseUrlField.text.toString().trim()
-                        .ifBlank { NviClient.DEFAULT_BASE })
-                    .putString("effort", effortVal)
-                    .putString("gh_token", ghTokenField.text.toString().trim())
-                    .putString("gh_repo", ghRepoField.text.toString().trim())
-                    .apply()
-                Toast.makeText(this@SettingsActivity,
-                    "Saved ✓", Toast.LENGTH_SHORT).show()
-                finish()
+                val keyToSave = keyField.text.toString().trim()
+                saveBtn.isEnabled = false
+                Thread {
+                    val result = try {
+                        val ok = prefs.edit()
+                            .putString("api_key", keyToSave)
+                            .putString("model", modelField.text.toString().trim()
+                                .ifBlank { NviClient.DEFAULT_MODEL })
+                            .putString("base_url", baseUrlField.text.toString().trim()
+                                .ifBlank { NviClient.DEFAULT_BASE })
+                            .putString("effort", effortVal)
+                            .putString("gh_token", ghTokenField.text.toString().trim())
+                            .putString("gh_repo", ghRepoField.text.toString().trim())
+                            .commit()
+                        if (ok && prefs.getString("api_key", "") == keyToSave) null
+                        else IOException("storage did not keep the value")
+                    } catch (e: Exception) {
+                        e
+                    }
+                    runOnUiThread {
+                        saveBtn.isEnabled = true
+                        if (result == null) {
+                            Toast.makeText(this@SettingsActivity,
+                                "Saved ✓", Toast.LENGTH_SHORT).show()
+                            finish()
+                        } else {
+                            Toast.makeText(this@SettingsActivity,
+                                "Save failed: ${result.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }.start()
             }
         }
         root.addView(saveBtn, LinearLayout.LayoutParams(
@@ -144,5 +189,61 @@ class SettingsActivity : Activity() {
         ).apply { setMargins(0, dp(32), 0, 0) })
 
         setContentView(root)
+    }
+
+    private fun loadModels(pickBtn: Button, modelField: EditText) {
+        val base = baseUrlField.text.toString().trim().trimEnd('/')
+            .ifBlank { NviClient.DEFAULT_BASE }
+        val key = keyField.text.toString().trim()
+        if (key.isBlank()) {
+            Toast.makeText(this, "Enter your API key first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        pickBtn.isEnabled = false
+        pickBtn.text = "⏳  Loading models…"
+        Thread {
+            val result = try {
+                val req = Request.Builder()
+                    .url("$base/v1/models")
+                    .header("Authorization", "Bearer $key")
+                    .build()
+                http.newCall(req).execute().use { resp ->
+                    val bodyStr = resp.body?.string() ?: ""
+                    if (!resp.isSuccessful) throw IOException("HTTP ${resp.code}")
+                    val arr = JSONObject(bodyStr).getJSONArray("data")
+                    val ids = ArrayList<String>()
+                    for (i in 0 until arr.length()) {
+                        val id = arr.getJSONObject(i).optString("id", "")
+                        if (id.isNotBlank()) ids.add(id)
+                    }
+                    if (ids.isEmpty()) throw IOException("empty list")
+                    ids.sortedWith(compareBy({ !it.contains("deepseek") }, { it }))
+                }
+            } catch (e: Exception) {
+                e
+            }
+            runOnUiThread {
+                pickBtn.isEnabled = true
+                pickBtn.text = "📋  Show model list"
+                when (result) {
+                    is List<*> -> {
+                        val models = result.filterIsInstance<String>()
+                        val current = modelField.text.toString()
+                        val checked = models.indexOf(current).coerceAtLeast(0)
+                        AlertDialog.Builder(this)
+                            .setTitle("Select model (${models.size}) — DeepSeek first")
+                            .setSingleChoiceItems(models.toTypedArray(), checked) { d, which ->
+                                modelField.setText(models[which])
+                                d.dismiss()
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    }
+                    else -> Toast.makeText(this,
+                        "Couldn't load models: ${(result as Exception).message}",
+                        Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 }

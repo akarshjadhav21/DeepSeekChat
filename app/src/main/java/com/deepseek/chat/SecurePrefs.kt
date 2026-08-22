@@ -12,7 +12,14 @@ object SecurePrefs {
         return try {
             create(ctx)
         } catch (_: Exception) {
-            ctx.getSharedPreferences("dsprefs", Context.MODE_PRIVATE)
+            // Corrupt keystore/pref file (happens after updates or restores).
+            // Wipe the unreadable crypto state and retry once before falling back.
+            heal(ctx)
+            try {
+                create(ctx)
+            } catch (_: Exception) {
+                ctx.getSharedPreferences("dsprefs", Context.MODE_PRIVATE)
+            }
         }
     }
 
@@ -24,6 +31,19 @@ object SecurePrefs {
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
+
+    private fun heal(ctx: Context) {
+        try {
+            ctx.deleteSharedPreferences("dsprefs_secure")
+        } catch (_: Exception) {
+        }
+        try {
+            val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
+            ks.load(null)
+            ks.deleteEntry(MasterKeys.DEFAULT_MASTER_KEY_ALIAS)
+        } catch (_: Exception) {
+        }
+    }
 
     private fun migrate(ctx: Context) {
         try {
