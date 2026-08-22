@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.deepseek.chat.BuilderTemplates
 import com.deepseek.chat.GitHubClient
 import com.deepseek.chat.NviClient
 import com.deepseek.chat.RepoEntry
@@ -42,8 +44,14 @@ fun BuilderPage() {
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Pair<String, Pair<String, String?>>?>(null) } // path, (content, sha)
-    var run by remember { mutableStateOf<RunInfo?>(null) }
+    var repoRuns by remember { mutableStateOf<Map<String, RunInfo?>>(emptyMap()) }
     var uploading by remember { mutableStateOf(false) }
+    var showTpl by remember { mutableStateOf(false) }
+    var tplPick by remember { mutableStateOf<BuilderTemplates.Tpl?>(null) }
+    // one-tap versioning draft: versionCode, versionName, tag
+    var verDraft by remember { mutableStateOf<Triple<Int, String, String>?>(null) }
+    var verSha by remember { mutableStateOf<String?>(null) }
+    var verContent by remember { mutableStateOf<String?>(null) }
 
     fun loadDir(p: String) {
         if (token.isBlank() || repo.isBlank()) return
@@ -62,13 +70,43 @@ fun BuilderPage() {
     }
     LaunchedEffect(repo) { if (repo.isNotBlank()) loadDir("") }
 
-    // poll latest run while visible
+    // poll latest runs for ALL configured repos (dashboard) while visible
     LaunchedEffect(Unit) {
         while (true) {
-            kotlinx.coroutines.delay(15000)
-            if (token.isNotBlank() && repo.isNotBlank())
-                try { run = GitHubClient.latestRun(token, repo) } catch (_: Exception) {}
+            if (token.isNotBlank())
+                for (r in repos) {
+                    val ri = try { GitHubClient.latestRun(token, r) } catch (_: Exception) { null }
+                    AppStore.handler.post { repoRuns = repoRuns + (r to ri) }
+                }
+            kotlinx.coroutines.delay(20000)
         }
+    }
+
+    // one-tap versioning: read gradle, bump patch, offer tag
+    fun openBump() {
+        if (busy || repo.isBlank()) return
+        busy = true; status = "Reading version…"
+        Thread {
+            try {
+                val (gradle, sha) = GitHubClient.readFile(token, repo, branch, "app/build.gradle.kts")
+                val codeM = Regex("versionCode\\s*=\\s*(\\d+)").find(gradle)
+                    ?: throw java.io.IOException("versionCode not found in app/build.gradle.kts")
+                val nameM = Regex("versionName\\s*=\\s*\"([^\"]+)\"").find(gradle)
+                    ?: throw java.io.IOException("versionName not found in app/build.gradle.kts")
+                val newCode = codeM.groupValues[1].toInt() + 1
+                val parts = nameM.groupValues[1].split('.')
+                val newName = if (parts.size >= 3 && parts.last().toIntOrNull() != null)
+                    parts.dropLast(1).joinToString(".") + "." + (parts.last().toInt() + 1)
+                else nameM.groupValues[1] + ".1"
+                AppStore.handler.post {
+                    busy = false; status = ""
+                    verSha = sha; verContent = gradle
+                    verDraft = Triple(newCode, newName, "v$newName")
+                }
+            } catch (e: Exception) {
+                AppStore.handler.post { busy = false; status = "✗ ${e.message}" }
+            }
+        }.start()
     }
 
     val pickMedia = rememberLauncherForActivityResult(
@@ -107,11 +145,39 @@ fun BuilderPage() {
             return@Column
         }
 
-        // repo chips
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (r in repos.take(4)) {
-                FilterChip(selected = r == repo, onClick = { repo = r; path = ""; },
-                    label = { Text(r.substringAfter('/'), fontSize = 12.sp) }, shape = CircleShape)
+        // multi-repo dashboard — last-build status per configured repo
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(repos) { r ->
+                val ri = repoRuns[r]
+                val dot = when (ri?.status) {
+                    "completed" -> C.green
+                    "failure" -> C.red
+                    "in_progress", "queued" -> C.amber
+                    else -> C.textLow
+                }
+                Card(shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (r == repo) C.card else C.surface),
+                    border = if (r == repo) androidx.compose.foundation.BorderStroke(1.dp, C.accent.copy(alpha = .6f)) else null,
+                    modifier = Modifier.clickable { repo = r; path = "" }) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(9.dp).background(dot, CircleShape))
+                        Spacer(Modifier.width(7.dp))
+                        Text(r.substringAfter('/'), fontSize = 12.sp,
+                            color = C.textHi, maxLines = 1)
+                        ri?.let {
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                when (it.status) {
+                                    "completed" -> "✅"
+                                    "failure" -> "❌"
+                                    "in_progress", "queued" -> "⏳"
+                                    else -> ""
+                                }, fontSize = 11.sp)
+                        }
+                    }
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -122,6 +188,8 @@ fun BuilderPage() {
             Text(if (path.isBlank()) "/" else "/$path",
                 color = C.textMid, fontSize = 13.sp, fontFamily = mono(),
                 maxLines = 1, modifier = Modifier.weight(1f))
+            IconButton(onClick = { showTpl = true }) {
+                Icon(Icons.Filled.LibraryAdd, "New from template", tint = C.green) }
             IconButton(onClick = { pickMedia.launch(arrayOf("image/*", "video/*")) }) {
                 Icon(Icons.Filled.AddPhotoAlternate, "Upload media", tint = C.accent2) }
             IconButton(onClick = { loadDir(path) }) { Icon(Icons.Filled.Refresh, null, tint = C.textMid) }
@@ -168,6 +236,7 @@ fun BuilderPage() {
         Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(C.card),
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                val run = repoRuns[repo]
                 val (dotColor, label) = when (run?.status) {
                     "completed" -> C.green to "✅ last build passed"
                     "failure" -> C.red to "❌ last build failed"
@@ -177,6 +246,8 @@ fun BuilderPage() {
                 Box(Modifier.size(10.dp).background(dotColor, CircleShape))
                 Spacer(Modifier.width(8.dp))
                 Text(label, color = C.textHi, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                IconButton(onClick = { openBump() }, enabled = !busy && repo.isNotBlank()) {
+                    Icon(Icons.Filled.Sell, "New release (bump version + tag)", tint = C.accent2) }
                 if (run?.status == "completed") {
                     TextButton(onClick = {
                         Thread {
@@ -306,6 +377,129 @@ fun BuilderPage() {
             }) { Text("Push") } },
             dismissButton = { TextButton(onClick = {
                 pendingUploadPath = null; pendingUploadBytes = null }) { Text("Cancel") } })
+    }
+
+    // templates gallery
+    if (showTpl) {
+        AlertDialog(onDismissRequest = { showTpl = false },
+            title = { Text("🖼 New project from template") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (tpl in BuilderTemplates.all) {
+                        Card(shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(C.surface),
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                showTpl = false; tplPick = tpl }) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text("${tpl.emoji} ${tpl.name}", color = C.textHi,
+                                    fontSize = 15.sp, fontFamily = mono())
+                                Spacer(Modifier.height(4.dp))
+                                Text(tpl.desc, color = C.textMid, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showTpl = false }) { Text("Close") } })
+    }
+
+    // template → repo name → create & push
+    tplPick?.let { tpl ->
+        var rn by remember(tpl) { mutableStateOf(tpl.suggestedRepo) }
+        AlertDialog(onDismissRequest = { tplPick = null },
+            title = { Text("Create ${tpl.emoji} ${tpl.name}") },
+            text = {
+                Column {
+                    OutlinedTextField(value = rn, onValueChange = { rn = it },
+                        singleLine = true, label = { Text("New repo name", color = C.textMid) },
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = C.textHi))
+                    Spacer(Modifier.height(6.dp))
+                    Text("Repo is created under your GitHub account (${repos.firstOrNull()?.substringBefore('/') ?: "you"}), template files pushed to main, CI starts automatically.",
+                        color = C.textLow, fontSize = 11.sp)
+                }
+            },
+            confirmButton = { Button(onClick = {
+                val rname = rn.trim().substringAfterLast('/').ifBlank { return@Button }
+                tplPick = null
+                busy = true
+                Thread {
+                    try {
+                        AppStore.handler.post { status = "Creating repo $rname…" }
+                        val full = GitHubClient.createRepo(token, rname)
+                        val files = tpl.files
+                        for ((i, f) in files.withIndex()) {
+                            AppStore.handler.post { status =
+                                "Pushing ${i + 1}/${files.size}: ${f.first}" }
+                            GitHubClient.putFile(token, full, "main", f.first, f.second, null,
+                                "Template ${tpl.name}: add ${f.first}")
+                        }
+                        val cur = (prefs.getString("gh_repo", "") ?: "")
+                            .split(",").map { it.trim() }.filter { it.isNotBlank() }
+                        if (!cur.contains(full))
+                            prefs.edit().putString("gh_repo", (cur + full).joinToString(",")).commit()
+                        AppStore.handler.post {
+                            busy = false
+                            repo = full; path = ""; loadDir("")
+                            status = "✓ $full created — CI building…"
+                        }
+                    } catch (e: Exception) {
+                        AppStore.handler.post { busy = false; status = "✗ ${e.message}" }
+                    }
+                }.start()
+            }) { Text("Create & push") } },
+            dismissButton = { TextButton(onClick = { tplPick = null }) { Text("Cancel") } })
+    }
+
+    // one-tap versioning: commit bumped gradle + push tag
+    verDraft?.let { draft ->
+        val (code0, name0, tag0) = draft
+        var c by remember(draft) { mutableStateOf(code0.toString()) }
+        var n by remember(draft) { mutableStateOf(name0) }
+        var tg by remember(draft) { mutableStateOf(tag0) }
+        AlertDialog(onDismissRequest = { verDraft = null },
+            title = { Text("🏷 Release $repo") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = c, onValueChange = { c = it }, singleLine = true,
+                        label = { Text("versionCode", color = C.textMid) })
+                    OutlinedTextField(value = n, onValueChange = { n = it }, singleLine = true,
+                        label = { Text("versionName", color = C.textMid) })
+                    OutlinedTextField(value = tg, onValueChange = { tg = it }, singleLine = true,
+                        label = { Text("Tag (v*) — triggers signed release", color = C.textMid) })
+                    Text("Commits app/build.gradle.kts then tags HEAD. The release workflow must exist in this repo.",
+                        color = C.textLow, fontSize = 11.sp)
+                }
+            },
+            confirmButton = { Button(onClick = {
+                val code = c.trim().toIntOrNull() ?: code0
+                val vname = n.trim(); val tag = tg.trim()
+                val sha0 = verSha; val old = verContent
+                verDraft = null
+                if (sha0 == null || old == null || tag.isBlank()) return@Button
+                busy = true; status = "Committing version bump…"
+                Thread {
+                    try {
+                        var g = Regex("versionCode\\s*=\\s*\\d+")
+                            .replace(old) { "versionCode = $code" }
+                        g = Regex("versionName\\s*=\\s*\"[^\"]+\"")
+                            .replace(g) { "versionName = \"$vname\"" }
+                        GitHubClient.putFile(token, repo, branch, "app/build.gradle.kts", g, sha0,
+                            "Release $vname")
+                        Thread.sleep(1500)
+                        val head = GitHubClient.headSha(token, repo, branch)
+                        GitHubClient.createRef(token, repo, "refs/tags/$tag", head)
+                        AppStore.handler.post {
+                            busy = false
+                            status = "🏷 $tag pushed — release building…"
+                        }
+                    } catch (e: Exception) {
+                        AppStore.handler.post { busy = false; status = "✗ ${e.message}" }
+                    }
+                }.start()
+            }) { Text("Commit + tag") } },
+            dismissButton = { TextButton(onClick = { verDraft = null }) { Text("Cancel") } })
     }
 }
 

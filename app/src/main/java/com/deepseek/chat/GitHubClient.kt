@@ -176,6 +176,47 @@ object GitHubClient {
         }
     }
 
+    /** SHA of the branch head — needed before creating a tag ref. */
+    fun headSha(token: String, repo: String, branch: String): String {
+        val url = "$API/repos/$repo/git/ref/heads/$branch"
+        val request = req(token, url).get().build()
+        return object : Sync<String>(client.newCall(request)) {
+            override fun parse(r: Response): Any {
+                if (!r.isSuccessful) throw IOException(httpMsg(r.code, r.body?.string(), "branch info"))
+                return JSONObject(r.body!!.string()).getJSONObject("object").getString("sha")
+            }
+        }.run()
+    }
+
+    /** Creates refs/tags/<name> (or any ref) pointing at sha. Throws with friendly message on 422. */
+    fun createRef(token: String, repo: String, ref: String, sha: String) {
+        val url = "$API/repos/$repo/git/refs"
+        val body = JSONObject().put("ref", ref).put("sha", sha).toString().toRequestBody(JSON_TYPE)
+        val request = req(token, url).post(body).build()
+        client.newCall(request).execute().use { r ->
+            if (!r.isSuccessful) throw IOException(httpMsg(r.code, r.body?.string(), "create tag"))
+        }
+    }
+
+    /** Creates a new repo under the token's owner. Returns its full_name, throws on failure. */
+    fun createRepo(token: String, name: String): String {
+        val body = JSONObject()
+            .put("name", name)
+            .put("private", false)
+            .put("auto_init", true)
+            .toString().toRequestBody(JSON_TYPE)
+        val request = req(token, "$API/user/repos").post(body).build()
+        return object : Sync<String>(client.newCall(request)) {
+            override fun parse(r: Response): Any {
+                if (!r.isSuccessful) {
+                    val extra = if (r.code == 422) " — that repo name likely already exists" else ""
+                    throw IOException(httpMsg(r.code, r.body?.string(), "create repo") + extra)
+                }
+                return JSONObject(r.body!!.string()).getString("full_name")
+            }
+        }.run()
+    }
+
     fun latestRun(token: String, repo: String): RunInfo? {
         val url = "$API/repos/$repo/actions/runs?per_page=1"
         val request = req(token, url).get().build()

@@ -215,8 +215,8 @@ fun SettingsPage() {
             }
 
             Section("ℹ️ About") {
-                Text("DeepSeek Chat v3.2.0 · Plan & Reports", color = C.textMid, fontSize = 13.sp)
-                Text("Plan-mode agent · scheduled reports · voice in 11 languages · vision · builder. Free keys: build.nvidia.com",
+                Text("DeepSeek Chat v3.3.0 · Builder+", color = C.textMid, fontSize = 13.sp)
+                Text("Plan-mode agent · scheduled reports · templates & one-tap releases · voice · vision. Free keys: build.nvidia.com",
                     color = C.textLow, fontSize = 12.sp)
             }
 
