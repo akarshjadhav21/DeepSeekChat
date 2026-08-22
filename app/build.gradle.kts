@@ -11,13 +11,32 @@ android {
         applicationId = "com.deepseek.chat"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "2.0"
+        versionCode = 5
+        versionName = "2.1"
+    }
+
+    signingConfigs {
+        val ksFile = System.getenv("KEYSTORE_FILE")
+        val ksPass = System.getenv("KEYSTORE_PASSWORD")
+        val keyAlias = System.getenv("KEY_ALIAS")
+        val keyPass = System.getenv("KEY_PASSWORD")
+        if (ksFile != null && file(ksFile).exists()) {
+            create("ciRelease") {
+                storeFile = file(ksFile)
+                storePassword = ksPass
+                this.keyAlias = keyAlias
+                keyPassword = keyPass
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            val ci = signingConfigs.findByName("ciRelease")
+            signingConfig = if (ci != null) ci else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
