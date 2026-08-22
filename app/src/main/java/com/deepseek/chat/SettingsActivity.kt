@@ -94,9 +94,9 @@ class SettingsActivity : Activity() {
         ghTokenField.setTextSize(13f)
         root.addView(ghTokenField)
 
-        root.addView(label("Target Repo").also { it.setPadding(0, dp(16), 0, dp(6)) })
+        root.addView(label("Target Repos (comma-separated)").also { it.setPadding(0, dp(16), 0, dp(6)) })
         val ghRepoField = field(prefs.getString("gh_repo", ""),
-            "username/MyAppRepo", password = false)
+            "username/RepoA, username/RepoB", password = false)
         ghRepoField.setTextSize(13f)
         root.addView(ghRepoField)
 

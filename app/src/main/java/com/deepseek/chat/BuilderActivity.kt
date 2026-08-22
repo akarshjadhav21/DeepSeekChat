@@ -30,6 +30,8 @@ class BuilderActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
 
     private lateinit var repo: String
+    private val repoList = mutableListOf<String>()
+    private var repoIdx = 0
     private var token: String = ""
     private var branch: String = "main"
 
@@ -51,7 +53,9 @@ class BuilderActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         token = prefs.getString("gh_token", "") ?: ""
-        repo = prefs.getString("gh_repo", "")?.trim()?.trim('/') ?: ""
+        val repoRaw = prefs.getString("gh_repo", "") ?: ""
+        repoList.addAll(repoRaw.split(",", "\n").map { it.trim().trim('/') }.filter { it.isNotBlank() })
+        repo = repoList.firstOrNull() ?: ""
 
         if (token.isBlank() || repo.isBlank()) {
             Toast.makeText(this,
@@ -99,6 +103,12 @@ class BuilderActivity : Activity() {
         root.addView(buildSection())
         setContentView(root)
 
+        loadBranch()
+    }
+
+    private lateinit var repoTitleView: TextView
+
+    private fun loadBranch() {
         Thread {
             try {
                 val b = GitHubClient.defaultBranch(token, repo)
@@ -109,6 +119,34 @@ class BuilderActivity : Activity() {
         }.start()
     }
 
+    private fun showRepoDialog() {
+        if (repoList.size < 2) {
+            toast("Only one repo — add more in Settings, comma-separated")
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Switch repo")
+            .setItems(repoList.toTypedArray()) { _, which ->
+                if (which != repoIdx) {
+                    polling = false
+                    repoIdx = which
+                    repo = repoList[repoIdx]
+                    branch = "main"
+                    path = ""
+                    entries.clear()
+                    filesAdapter.notifyDataSetChanged()
+                    installBtn.isEnabled = false
+                    installBtn.alpha = 0.4f
+                    statusView.text = "Ready."
+                    crumb.text = "/"
+                    repoTitleView.text = "🔨 $repo"
+                    loadBranch()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun topBar(): View {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -116,12 +154,14 @@ class BuilderActivity : Activity() {
             setPadding(dp(16), dp(20), dp(16), dp(12))
             setBackgroundColor(Color.parseColor("#0D0D0D"))
         }
-        bar.addView(TextView(this).apply {
+        repoTitleView = TextView(this).apply {
             text = "🔨 $repo"
             textSize = 15f
             setTypeface(Typeface.DEFAULT_BOLD)
             setTextColor(Color.WHITE)
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            setOnClickListener { showRepoDialog() }
+        }
+        bar.addView(repoTitleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         bar.addView(smallBtn("↻") { refreshFiles() })
         return bar
     }
