@@ -90,7 +90,7 @@ object AppStore {
 
     // ---------- sending ----------
 
-    fun send(text: String, onNeedKey: () -> Unit, modelOverride: String? = null) {
+    fun send(text: String, modelOverride: String? = null, onNeedKey: () -> Unit) {
         if (text.isBlank() || busy || pendingImages.isNotEmpty() && text.isBlank()) return
         val apiKey = prefsWrap.getString("api_key", "") ?: ""
         if (apiKey.isBlank()) { onNeedKey(); return }
