@@ -12,8 +12,6 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-data class Msg(val role: String, val content: String)
-
 object NviClient {
 
     private val client = OkHttpClient.Builder()

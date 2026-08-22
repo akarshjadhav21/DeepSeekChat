@@ -10,32 +10,27 @@ object SecurePrefs {
     fun get(ctx: Context): SharedPreferences {
         migrate(ctx)
         return try {
-            val masterKey = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-            EncryptedSharedPreferences.create(
-                ctx,
-                "dsprefs_secure",
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
+            create(ctx)
         } catch (_: Exception) {
             ctx.getSharedPreferences("dsprefs", Context.MODE_PRIVATE)
         }
     }
+
+    private fun create(ctx: Context): SharedPreferences =
+        EncryptedSharedPreferences.create(
+            "dsprefs_secure",
+            MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC),
+            ctx,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
 
     private fun migrate(ctx: Context) {
         try {
             val plain = ctx.getSharedPreferences("dsprefs", Context.MODE_PRIVATE)
             val key = plain.getString("api_key", null)
             if (key.isNullOrBlank()) return
-            val masterKey = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-            val secure = EncryptedSharedPreferences.create(
-                ctx,
-                "dsprefs_secure",
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
+            val secure = create(ctx)
             if (secure.getString("api_key", "").isNullOrBlank()) {
                 secure.edit()
                     .putString("api_key", key)
