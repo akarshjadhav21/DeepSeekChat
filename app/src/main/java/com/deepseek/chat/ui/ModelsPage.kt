@@ -16,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.deepseek.chat.C
 import com.deepseek.chat.NviClient
 import com.deepseek.chat.engine.AppStore
 import okhttp3.OkHttpClient

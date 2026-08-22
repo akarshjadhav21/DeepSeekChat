@@ -20,7 +20,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.deepseek.chat.C
 import com.deepseek.chat.GitHubClient
 import com.deepseek.chat.NviClient
 import com.deepseek.chat.engine.AppStore

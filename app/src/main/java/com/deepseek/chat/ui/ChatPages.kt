@@ -293,7 +293,7 @@ fun UserBubble(text: String, images: List<String> = emptyList()) {
                 contentDescription = null,
                 modifier = Modifier.size(120.dp).clip(RoundedCornerShape(14.dp)))
         }
-        Box(background(C.userBubble(), RoundedCornerShape(20.dp)).padding(12.dp)) {
+        Box(Modifier.background(C.userBubble(), RoundedCornerShape(20.dp)).padding(12.dp)) {
             Text(text, color = Color.White, fontSize = 15.sp)
         }
     }
@@ -304,7 +304,7 @@ fun AiBubble(text: String) {
     Row(Modifier.fillMaxWidth().padding(end = 36.dp)) {
         Avatar("🤖")
         Box(Modifier.offset(y = (-2).dp).weight(1f)) {
-            Box(background(C.bubbleAi, RoundedCornerShape(20.dp)).padding(12.dp)) {
+            Box(Modifier.background(C.bubbleAi, RoundedCornerShape(20.dp)).padding(12.dp)) {
                 AndroidTextView(Markdown.render(text))
             }
         }
@@ -314,7 +314,7 @@ fun AiBubble(text: String) {
 @Composable
 fun ThinkingBubble(text: String) {
     Row(Modifier.fillMaxWidth().padding(start = 44.dp, end = 36.dp)) {
-        Box(background(Color(0xFF141922), RoundedCornerShape(16.dp)).padding(10.dp)) {
+        Box(Modifier.background(Color(0xFF141922), RoundedCornerShape(16.dp)).padding(10.dp)) {
             Column {
                 Text("💭 thinking", color = C.textLow, fontSize = 11.sp)
                 Text(text.takeLast(600), color = C.textMid, fontSize = 12.sp,
@@ -327,7 +327,7 @@ fun ThinkingBubble(text: String) {
 @Composable
 fun ToolBubble(text: String) {
     Row(Modifier.fillMaxWidth().padding(start = 44.dp, end = 36.dp)) {
-        Box(background(C.toolBg, RoundedCornerShape(14.dp)).padding(10.dp)) {
+        Box(Modifier.background(C.toolBg, RoundedCornerShape(14.dp)).padding(10.dp)) {
             Text(text, color = Color(0xFF7CE38B), fontSize = 12.sp, fontFamily = mono())
         }
     }
