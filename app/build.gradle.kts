@@ -11,8 +11,8 @@ android {
         applicationId = "com.deepseek.chat"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "2.0"
     }
 
     buildTypes {
@@ -34,4 +34,5 @@ android {
 dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.security:security-crypto:1.0.0")
+    implementation("androidx.core:core:1.13.1")
 }

@@ -188,6 +188,9 @@ class MainActivity : Activity() {
         }
         bar.addView(titleView, LinearLayout.LayoutParams(0,
             ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        bar.addView(smallButton("🔨") {
+            startActivity(Intent(this@MainActivity, BuilderActivity::class.java))
+        })
         bar.addView(smallButton("💬") { showChatsDialog() })
         bar.addView(smallButton("New") { newChat() })
         bar.addView(smallButton("⚙") { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) })

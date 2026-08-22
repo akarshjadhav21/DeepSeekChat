@@ -81,6 +81,26 @@ class SettingsActivity : Activity() {
         root.addView(effortField)
 
         root.addView(TextView(this).apply {
+            text = "— Builder 🔨 —"
+            textSize = 14f
+            setTypeface(Typeface.DEFAULT_BOLD)
+            setTextColor(Color.parseColor("#FFD54F"))
+            setPadding(0, dp(32), 0, 0)
+        })
+
+        root.addView(label("GitHub Token (repo + workflow scopes)").also { it.setPadding(0, dp(12), 0, dp(6)) })
+        val ghTokenField = field(prefs.getString("gh_token", ""),
+            "ghp_…  classic PAT with repo+workflow", password = true)
+        ghTokenField.setTextSize(13f)
+        root.addView(ghTokenField)
+
+        root.addView(label("Target Repo").also { it.setPadding(0, dp(16), 0, dp(6)) })
+        val ghRepoField = field(prefs.getString("gh_repo", ""),
+            "username/MyAppRepo", password = false)
+        ghRepoField.setTextSize(13f)
+        root.addView(ghRepoField)
+
+        root.addView(TextView(this).apply {
             text = "Free keys: build.nvidia.com → sign in → Get API Key.\n" +
                    "Thinking mode is always ON with high reasoning effort."
             textSize = 12f
@@ -103,6 +123,8 @@ class SettingsActivity : Activity() {
                     .putString("model", modelField.text.toString().trim()
                         .ifBlank { NviClient.DEFAULT_MODEL })
                     .putString("effort", effortVal)
+                    .putString("gh_token", ghTokenField.text.toString().trim())
+                    .putString("gh_repo", ghRepoField.text.toString().trim())
                     .apply()
                 Toast.makeText(this@SettingsActivity,
                     "Saved ✓", Toast.LENGTH_SHORT).show()
