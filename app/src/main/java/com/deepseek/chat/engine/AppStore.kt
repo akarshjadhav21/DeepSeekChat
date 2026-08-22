@@ -72,7 +72,7 @@ object AppStore {
         if (chats.isEmpty()) newChat() else persist()
     }
 
-    private fun setBusy(b: Boolean) { busy = b; if (!b) statusText = "" }
+    private fun markBusy(b: Boolean) { busy = b; if (!b) statusText = "" }
 
     fun stopStreaming() { activeCall?.cancel(); activeCall = null }
     private var activeCall: okhttp3.Call? = null
@@ -122,7 +122,7 @@ object AppStore {
         val effort = prefsWrap.getString("effort", "high") ?: "high"
         val baseUrl = prefsWrap.getString("base_url", NviClient.DEFAULT_BASE)?.ifBlank { null } ?: NviClient.DEFAULT_BASE
 
-        setBusy(true); thinkingText = null; toolText = null; errorText = null
+        markBusy(true); thinkingText = null; toolText = null; errorText = null
         statusText = "Contacting model…"
 
         val msgs0 = history()
@@ -150,7 +150,7 @@ object AppStore {
             baseUrl = baseUrl,
             onDone = { err -> handler.post {
                 val stopped = err?.message == NviClient.STOP
-                setBusy(false); statusText = ""; liveContent = null
+                markBusy(false); statusText = ""; liveContent = null
                 val chat = active()
                 val reply = content?.toString().orEmpty()
                 if (err != null && !stopped) {
