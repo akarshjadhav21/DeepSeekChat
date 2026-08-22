@@ -271,14 +271,16 @@ class BuilderActivity : Activity() {
         val dlg = AlertDialog.Builder(this).setView(container).create()
 
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        var aiButton: Button? = null
         val aiBtn = bigBtn("🤖 AI Edit") {
             val instruction = prompt.text.toString().trim()
             if (instruction.isEmpty()) {
                 toast("Type what to change first"); return@bigBtn
             }
             if (busyAi) { toast("AI is already editing…"); return@bigBtn }
-            aiEditFile(aiBtn, editor, instruction)
+            aiEditFile(aiButton, editor, instruction)
         }
+        aiButton = aiBtn
         val saveBtn = bigBtn("💾 Push") {
             dlg.dismiss()
             commitFile(entry, editor.text.toString(), sha)
@@ -294,10 +296,10 @@ class BuilderActivity : Activity() {
         dlg.show()
     }
 
-    private fun aiEditFile(btn: Button, editor: EditText, instruction: String) {
+    private fun aiEditFile(btn: Button?, editor: EditText, instruction: String) {
         busyAi = true
-        btn.isEnabled = false
-        btn.text = "🤔 …"
+        btn?.isEnabled = false
+        btn?.text = "🤔 …"
         val apiKey = prefs.getString("api_key", "") ?: ""
         val model = prefs.getString("model", NviClient.DEFAULT_MODEL)?.takeIf { it.isNotBlank() }
             ?: NviClient.DEFAULT_MODEL
@@ -312,8 +314,8 @@ class BuilderActivity : Activity() {
             onContent = { chunk -> acc.append(chunk) },
             onDone = { err -> handler.post {
                 busyAi = false
-                btn.isEnabled = true
-                btn.text = "🤖 AI Edit"
+                btn?.isEnabled = true
+                btn?.text = "🤖 AI Edit"
                 var out = acc.toString().trim()
                 if (out.startsWith("```")) {
                     out = out.removePrefix("```").substringAfter("\n", "").trimIndent()

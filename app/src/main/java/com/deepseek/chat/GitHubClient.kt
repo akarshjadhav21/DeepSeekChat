@@ -46,7 +46,7 @@ object GitHubClient {
             .header("Accept", "application/vnd.github+json")
             .header("User-Agent", "DeepSeekChat")
 
-    private class Sync<T>(val call: Call) {
+    private open class Sync<T>(val call: Call) {
         @Suppress("UNCHECKED_CAST")
         fun run(): T {
             val latch = java.util.concurrent.CountDownLatch(1)
