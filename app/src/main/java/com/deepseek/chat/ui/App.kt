@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -48,9 +49,12 @@ fun DeepSeekApp() {
     }
 
     val nav = rememberNavController()
+    LaunchedEffect(Unit) {
+        if (AppStore.openTalk) { nav.navigate("talk"); AppStore.openTalk = false }
+    }
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: "chats"
-    val showBar = route in listOf("chats", "build", "models", "settings")
+    val showBar = route in listOf("chats", "talk", "build", "models", "settings")
 
     Scaffold(
         bottomBar = {
@@ -59,6 +63,7 @@ fun DeepSeekApp() {
                 NavigationBar(containerColor = C.surface) {
                     val items = listOf(
                         Triple("chats", Icons.Filled.Forum, "Chats"),
+                        Triple("talk", Icons.Filled.Mic, "Talk"),
                         Triple("build", Icons.Filled.Build, "Build"),
                         Triple("models", Icons.Filled.Psychology, "Models"),
                         Triple("settings", Icons.Filled.Settings, "Settings"))
@@ -91,6 +96,7 @@ fun DeepSeekApp() {
                         onBack = { nav.popBackStack() },
                         onNeedSettings = { nav.navigate("settings") })
                 }
+                composable("talk") { TalkPage() }
                 composable("build") { BuilderPage() }
                 composable("models") { ModelsPage() }
                 composable("settings") { SettingsPage() }

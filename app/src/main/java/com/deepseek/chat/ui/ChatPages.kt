@@ -42,12 +42,28 @@ import com.deepseek.chat.engine.Media
 @Composable
 fun ChatsListPage(onOpen: (String) -> Unit) {
     var deleteTarget by remember { mutableStateOf<Chat?>(null) }
+    var query by remember { mutableStateOf("") }
+    val q = query.trim()
+    val shown = if (q.isEmpty()) AppStore.chats else AppStore.chats.filter { c ->
+        c.title.contains(q, true) || c.msgs.any { it.content.contains(q, true) }
+    }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {
             Text("Chats", style = MaterialTheme.typography.titleLarge, color = C.textHi,
                 modifier = Modifier.padding(vertical = 12.dp))
+            OutlinedTextField(value = query, onValueChange = { query = it },
+                singleLine = true,
+                placeholder = { Text("🔍 Search chats…", color = C.textLow, fontSize = 13.sp) },
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = C.textHi, unfocusedTextColor = C.textHi,
+                    focusedContainerColor = C.card, unfocusedContainerColor = C.card,
+                    focusedBorderColor = C.accent.copy(alpha = .5f),
+                    unfocusedBorderColor = Color.Transparent),
+                modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(AppStore.chats, key = { it.id }) { chat ->
+                items(shown, key = { it.id }) { chat ->
                     Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(
                         containerColor = if (chat.id == AppStore.activeId) C.card else C.surface),
                         modifier = Modifier.fillMaxWidth().combinedClickable(

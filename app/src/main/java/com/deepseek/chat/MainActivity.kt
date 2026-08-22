@@ -9,6 +9,9 @@ import com.deepseek.chat.ui.DeepSeekTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (intent?.getStringExtra("open") == "talk") {
+            com.deepseek.chat.engine.AppStore.openTalk = true
+        }
         setContent {
             DeepSeekTheme {
                 DeepSeekApp()

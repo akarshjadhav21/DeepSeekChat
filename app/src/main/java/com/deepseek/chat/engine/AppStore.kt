@@ -24,6 +24,7 @@ object AppStore {
     var liveContent by mutableStateOf<String?>(null)
     var pendingConfirm by mutableStateOf<AgentConfirm?>(null)
     var intentEvent by mutableStateOf<Intent?>(null)
+    var openTalk by mutableStateOf(false)
 
     var agentOn by mutableStateOf(false)
     var agentAuto by mutableStateOf(false)

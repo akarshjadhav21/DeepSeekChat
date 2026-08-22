@@ -1,5 +1,7 @@
 package com.deepseek.chat.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -11,10 +13,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.deepseek.chat.ChatStore
 import com.deepseek.chat.NviClient
 import com.deepseek.chat.engine.AppStore
 
@@ -47,6 +51,7 @@ private fun Field(value: String, onChange: (String) -> Unit,
 
 @Composable
 fun SettingsPage() {
+    val ctx = LocalContext.current
     val prefs = AppStore.prefs()
     var key by remember { mutableStateOf(prefs.getString("api_key", "") ?: "") }
     var ghToken by remember { mutableStateOf(prefs.getString("gh_token", "") ?: "") }
@@ -56,6 +61,40 @@ fun SettingsPage() {
     var agentAuto by remember { mutableStateOf(AppStore.agentAuto) }
     var status by remember { mutableStateOf<Pair<String, Boolean>?>(null) } // msg, isError
     var saving by remember { mutableStateOf(false) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        Thread {
+            val ok = runCatching {
+                ctx.contentResolver.openOutputStream(uri)?.use {
+                    it.write(ChatStore.serialize(AppStore.chats).toByteArray())
+                } != null
+            }.getOrDefault(false)
+            AppStore.handler.post { status =
+                (if (ok) "✓ Backup saved" else "✗ Backup failed") to !ok }
+        }.start()
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        Thread {
+            val parsed = runCatching {
+                ChatStore.deserialize(
+                    ctx.contentResolver.openInputStream(uri)!!
+                        .bufferedReader().readText())
+            }.getOrNull()
+            AppStore.handler.post {
+                if (parsed.isNullOrEmpty()) status = "✗ Restore failed — bad file" to true
+                else {
+                    AppStore.chats = parsed
+                    AppStore.activeId = parsed.firstOrNull()?.id
+                    AppStore.persist()
+                    status = "✓ Restored ${parsed.size} chats" to false
+                }
+            }
+        }.start()
+    }
 
     fun save() {
         saving = true; status = "Saving…" to false
@@ -113,9 +152,21 @@ fun SettingsPage() {
                 Text("Blocklist still enforced. Long-press 🤖 also toggles this.",
                     color = C.textLow, fontSize = 11.sp)
             }
+            Section("💾 Backup & restore") {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { exportLauncher.launch("deepseekchat-backup.json") },
+                        shape = RoundedCornerShape(14.dp)) { Text("⬆ Export all chats") }
+                    OutlinedButton(onClick = {
+                        importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+                    }, shape = RoundedCornerShape(14.dp)) { Text("⬇ Import") }
+                }
+                Text("Export saves every chat as JSON. Import replaces current chats.",
+                    color = C.textLow, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+
             Section("ℹ️ About") {
-                Text("DeepSeek Chat v3.0 · Compose edition", color = C.textMid, fontSize = 13.sp)
-                Text("Relay + vision + agent. Free keys: build.nvidia.com",
+                Text("DeepSeek Chat v3.1 · Talk edition", color = C.textMid, fontSize = 13.sp)
+                Text("Voice in 11 languages · vision · agent · builder. Free keys: build.nvidia.com",
                     color = C.textLow, fontSize = 12.sp)
             }
 

@@ -72,25 +72,54 @@ object ChatStore {
 
     fun saveAll(ctx: Context, chats: List<Chat>) {
         try {
-            val arr = JSONArray()
-            for (c in chats) {
-                val ca = JSONArray()
-                for (m in c.msgs) {
-                    val mo = JSONObject().put("role", m.role).put("content", m.content)
-                    if (m.images.isNotEmpty()) {
-                        val ia = JSONArray()
-                        for (img in m.images) ia.put(img)
-                        mo.put("images", ia)
-                    }
-                    ca.put(mo)
-                }
-                arr.put(JSONObject()
-                    .put("id", c.id)
-                    .put("title", c.title)
-                    .put("msgs", ca))
-            }
-            file(ctx).writeText(arr.toString())
+            file(ctx).writeText(serialize(chats))
         } catch (_: Exception) {
+        }
+    }
+
+    fun serialize(chats: List<Chat>): String {
+        val arr = JSONArray()
+        for (c in chats) {
+            val ca = JSONArray()
+            for (m in c.msgs) {
+                val mo = JSONObject().put("role", m.role).put("content", m.content)
+                if (m.images.isNotEmpty()) {
+                    val ia = JSONArray()
+                    for (img in m.images) ia.put(img)
+                    mo.put("images", ia)
+                }
+                ca.put(mo)
+            }
+            arr.put(JSONObject()
+                .put("id", c.id)
+                .put("title", c.title)
+                .put("msgs", ca))
+        }
+        return arr.toString()
+    }
+
+    fun deserialize(text: String): MutableList<Chat>? {
+        return try {
+            val out = mutableListOf<Chat>()
+            val arr = JSONArray(text)
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val msgs = mutableListOf<Msg>()
+                val ma = o.optJSONArray("msgs") ?: JSONArray()
+                for (j in 0 until ma.length()) {
+                    val m = ma.getJSONObject(j)
+                    val imgs = mutableListOf<String>()
+                    m.optJSONArray("images")?.let { ia ->
+                        for (k in 0 until ia.length()) imgs.add(ia.getString(k))
+                    }
+                    msgs.add(Msg(m.getString("role"), m.getString("content"), imgs))
+                }
+                out.add(Chat(o.optString("id", UUID.randomUUID().toString()),
+                    o.optString("title", "Imported"), msgs))
+            }
+            if (out.isEmpty()) null else out
+        } catch (_: Exception) {
+            null
         }
     }
 }
