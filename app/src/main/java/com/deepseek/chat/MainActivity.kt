@@ -51,7 +51,7 @@ class MainActivity : Activity() {
             val si = statusItem ?: return
             val secs = ((System.currentTimeMillis() - statusStart) / 1000).toInt()
             si.text.setLength(0)
-            si.text.append("⏳ Waiting for model… ${secs}s\n(high effort can take a while — ■ stops it)")
+            si.text.append("⏳ Waiting for model… ${secs}s\n(free-tier queue can take 4+ min — ■ stops it)")
             adapter.notifyDataSetChanged()
             handler.postDelayed(this, 5000)
         }

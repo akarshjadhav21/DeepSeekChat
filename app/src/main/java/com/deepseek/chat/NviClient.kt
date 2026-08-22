@@ -16,7 +16,7 @@ object NviClient {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(180, TimeUnit.SECONDS)
+        .readTimeout(360, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
@@ -140,6 +140,7 @@ object NviClient {
             404 -> "Model not found. Try another model name in Settings."
             429 -> "Rate limit reached on NVIDIA free tier. Wait a bit."
             500, 502, 503 -> "NVIDIA server busy ($code). Try again shortly."
+            504 -> "NVIDIA's queue gave up after ~5 min. Free tier is overloaded — just retry, streaming usually gets through."
             else -> "HTTP $code"
         }
         return "$hint${if (!body.isNullOrBlank()) "\n\n$body" else ""}"
@@ -148,7 +149,7 @@ object NviClient {
     private fun cleanError(e: Exception): Throwable {
         val msg = e.message ?: "Unknown error"
         return if (msg.contains("timeout", true)) {
-            IOException("Connection timed out. Check your internet.")
+            IOException("Gave up waiting — free-tier queue can take 4+ min today. Tap retry.")
         } else if (msg.contains("Unable to resolve", true) || msg.contains("network", true)) {
             IOException("No internet connection.")
         } else e
