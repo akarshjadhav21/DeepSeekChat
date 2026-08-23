@@ -17,6 +17,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.deepseek.chat.engine.AppStore
+import kotlin.math.abs
 
 /**
  * v3.6 — draggable 🤖 bubble that floats over ANY app.
@@ -145,7 +146,7 @@ class BubbleService : android.app.Service() {
             textSize = 14f
             setTextColor(Color.WHITE)
             setHintTextColor(0x66FFFFFF)
-            singleLine = true
+            setSingleLine(true)
             background = GradientDrawable().apply {
                 cornerRadius = dp(12).toFloat(); setColor(0x22FFFFFF)
             }
