@@ -22,6 +22,8 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import com.deepseek.chat.engine.AppStore
+import com.deepseek.chat.engine.Media
 import java.io.File
 import java.util.concurrent.CountDownLatch
 
