@@ -17,10 +17,13 @@ object AgentNotify {
     private const val CHANNEL_ID = "agent"
     private const val NOTIF_ID = 2002
 
+    /** Distinct id so bubble replies never overwrite a pending approval alert. */
+    const val REPLY_ID = 2003
+
     fun needsApproval(ctx: Context, what: String) = info(ctx, "🤖 Approval needed", what)
 
     /** Generic heads-up (also used for bubble replies). */
-    fun info(ctx: Context, title: String, what: String) {
+    fun info(ctx: Context, title: String, what: String, notifId: Int = NOTIF_ID) {
         try {
             val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(
@@ -36,7 +39,7 @@ object AgentNotify {
                     putExtra("open", "chat")
                 },
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            nm.notify(NOTIF_ID, NotificationCompat.Builder(ctx, CHANNEL_ID)
+            nm.notify(notifId, NotificationCompat.Builder(ctx, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
                 .setContentTitle(title)
                 .setContentText(what.lineSequence().firstOrNull() ?: what)

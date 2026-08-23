@@ -80,14 +80,16 @@ object Reports {
     }
 
     private fun deliver(ctx: Context, report: String) {
-        val chats = ChatStore.list(ctx)
-        val target = chats.firstOrNull { it.title == CHAT_TITLE } ?: run {
-            val c = Chat(UUID.randomUUID().toString(), CHAT_TITLE)
-            chats.add(0, c)
-            c
+        synchronized(ChatStore.ioLock) {
+            val chats = ChatStore.list(ctx)
+            val target = chats.firstOrNull { it.title == CHAT_TITLE } ?: run {
+                val c = Chat(UUID.randomUUID().toString(), CHAT_TITLE)
+                chats.add(0, c)
+                c
+            }
+            target.msgs.add(Msg("assistant", report))
+            ChatStore.saveAll(ctx, chats)
         }
-        target.msgs.add(Msg("assistant", report))
-        ChatStore.saveAll(ctx, chats)
         AppStore.handler.post { if (AppStore.ready) AppStore.reload() }
         notify(ctx, report)
     }

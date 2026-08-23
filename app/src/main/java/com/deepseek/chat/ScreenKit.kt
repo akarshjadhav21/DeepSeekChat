@@ -15,7 +15,6 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
-import android.os.CountDownTimer
 import android.os.IBinder
 import android.view.Gravity
 import android.view.ViewGroup
@@ -63,8 +62,11 @@ object ScreenShot {
 
 class CaptureActivity : ComponentActivity() {
 
+    private var safety: android.os.CountDownTimer? = null
+
     private val consent =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+            safety?.cancel()   // user answered — stop the watchdog
             if (res.resultCode != Activity.RESULT_OK || res.data == null) {
                 toast("Screen capture denied")
                 finish()
@@ -96,10 +98,10 @@ class CaptureActivity : ComponentActivity() {
         setContentView(root)
 
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        // safety net: never hang translucent forever
-        object : CountDownTimer(12000, 12000) {
+        // safety net: never hang translucent forever (generous — user must read the dialog)
+        safety = object : android.os.CountDownTimer(45_000, 45_000) {
             override fun onTick(m: Long) {}
-            override fun onFinish() { if (!isFinishing) { finish() } }
+            override fun onFinish() { if (!isFinishing) finish() }
         }.start()
 
         try {
@@ -210,6 +212,12 @@ class CaptureService : Service() {
                 runCatching { vdisplay?.release() }
                 runCatching { reader?.close() }
                 runCatching { projection?.stop() }
+                // prune old captures — keep newest 25 so storage can't leak
+                runCatching {
+                    filesDir.listFiles { f -> f.name.startsWith("shot_") }
+                        ?.sortedByDescending { it.lastModified() }
+                        ?.drop(25)?.forEach { it.delete() }
+                }
                 stopSelf()
             }
         }.start()

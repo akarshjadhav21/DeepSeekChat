@@ -16,6 +16,9 @@ data class Chat(
 
 object ChatStore {
 
+    /** Guards read-modify-write cycles across UI + WorkManager threads. */
+    val ioLock = Any()
+
     private fun file(ctx: Context): File = File(ctx.filesDir, "chats.json")
     private fun legacyFile(ctx: Context): File = File(ctx.filesDir, "chat_history.json")
 

@@ -115,12 +115,12 @@ object Watchers {
             out["charging"] = if (o.contains("powered: true")) 1 else 0
         }
         runCatching {
+            // toybox df -k: Filesystem 1K-blocks Used Available Use% Mounted on
             val cols = Agent.execute("df -k /sdcard | tail -1").trim().split(Regex("\\s+"))
-            if (cols.size >= 3) {
-                val total = cols[cols.size - 4].toLongOrNull() ?: cols[1].toLongOrNull()
-                val used = cols.getOrNull(cols.size - 3)?.toLongOrNull() ?: cols[2].toLongOrNull()
-                if (total != null && used != null && total > 0) out["storage"] = (used * 100 / total).toInt()
-            }
+            val total = cols.getOrNull(1)?.toLongOrNull()
+            val used = cols.getOrNull(2)?.toLongOrNull()
+            if (total != null && used != null && total > 0 && used in 0..total * 4)
+                out["storage"] = (used * 100 / total).toInt().coerceIn(0, 100)
         }
         runCatching {
             val o = Agent.execute("cat /proc/meminfo | head -3")
@@ -194,13 +194,15 @@ object Watchers {
     // ---------- delivery (mirrors Reports pattern) ----------
 
     private fun deliver(ctx: Context, notifTitle: String, body: String, ruleId: String) {
-        val chats = ChatStore.list(ctx)
-        val target = chats.firstOrNull { it.title == CHAT_TITLE } ?: run {
-            val c = Chat(java.util.UUID.randomUUID().toString(), CHAT_TITLE)
-            chats.add(0, c); c
+        synchronized(ChatStore.ioLock) {
+            val chats = ChatStore.list(ctx)
+            val target = chats.firstOrNull { it.title == CHAT_TITLE } ?: run {
+                val c = Chat(java.util.UUID.randomUUID().toString(), CHAT_TITLE)
+                chats.add(0, c); c
+            }
+            target.msgs.add(Msg("assistant", body))
+            ChatStore.saveAll(ctx, chats)
         }
-        target.msgs.add(Msg("assistant", body))
-        ChatStore.saveAll(ctx, chats)
         AppStore.handler.post { if (AppStore.ready) AppStore.reload() }
         notify(ctx, notifTitle, body, ruleId)
     }

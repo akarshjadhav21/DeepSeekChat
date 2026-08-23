@@ -108,9 +108,20 @@ object AppStore {
         startStream(modelOverride)
     }
 
-    /** Called by the floating bubble over other apps. Returns false if busy. */
+    /** Called by the floating bubble over other apps. Returns false if busy (text-only). */
     fun sendFromBubble(text: String, image: File? = null): Boolean {
-        if (!ready || busy || text.isBlank()) return false
+        if (!ready || text.isBlank()) return false
+        if (busy) {
+            // don't drop captures mid-stream — queue for the next message
+            if (image != null) {
+                pendingImages = pendingImages + image
+                com.deepseek.chat.AgentNotify.info(appCtx, "📸 Screenshot queued",
+                    "Attached for your next message.",
+                    com.deepseek.chat.AgentNotify.REPLY_ID)
+                return true
+            }
+            return false
+        }
         val key = prefsWrap.getString("api_key", "") ?: ""
         if (key.isBlank()) {
             com.deepseek.chat.AgentNotify.info(appCtx, "🔑 API key missing",
@@ -188,6 +199,7 @@ object AppStore {
                 val chat = active()
                 val reply = content?.toString().orEmpty()
                 if (err != null && !stopped) {
+                    fromBubble = false
                     errorText = err.message ?: "Error"
                 } else if (reply.isNotBlank() && chat != null) {
                     chat.msgs.add(Msg("assistant", reply))
@@ -203,7 +215,8 @@ object AppStore {
                     if (!toolTurn) {
                         fromBubble = false
                         com.deepseek.chat.AgentNotify.info(appCtx, "💬 Reply ready",
-                            reply.replace(Regex("```[\\s\\S]*?```"), " … ").take(200))
+                            reply.replace(Regex("```[\\s\\S]*?```"), " … ").take(200),
+                            com.deepseek.chat.AgentNotify.REPLY_ID)
                     }
                 }
             }}
