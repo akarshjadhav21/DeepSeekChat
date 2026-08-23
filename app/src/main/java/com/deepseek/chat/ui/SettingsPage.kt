@@ -63,8 +63,8 @@ fun SettingsPage() {
     var talkModel by remember { mutableStateOf(prefs.getString("talk_model", "") ?: "") }
     var agentAuto by remember { mutableStateOf(AppStore.agentAuto) }
     var bubbleOn by remember { mutableStateOf(AppStore.bubbleOn) }
-    var watchers by remember { mutableStateOf(com.deepseek.chat.Watchers.load(prefs)) }
-    var watchOn by remember { mutableStateOf(com.deepseek.chat.Watchers.isOn(prefs)) }
+    var watchers by remember { mutableStateOf(com.deepseek.chat.Watchers.load(ctx)) }
+    var watchOn by remember { mutableStateOf(com.deepseek.chat.Watchers.isOn(ctx)) }
     var watchMin by remember { mutableStateOf(prefs.getInt("watch_interval_min", 30)) }
     var newMetric by remember { mutableStateOf("battery") }
     var newOp by remember { mutableStateOf("<") }
