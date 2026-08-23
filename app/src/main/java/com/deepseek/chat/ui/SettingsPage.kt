@@ -61,6 +61,7 @@ fun SettingsPage() {
     var base by remember { mutableStateOf(prefs.getString("base_url", NviClient.DEFAULT_BASE) ?: NviClient.DEFAULT_BASE) }
     var effort by remember { mutableStateOf(prefs.getString("effort", "high") ?: "high") }
     var talkModel by remember { mutableStateOf(prefs.getString("talk_model", "") ?: "") }
+    var visionModel by remember { mutableStateOf(prefs.getString("vision_model", "") ?: "") }
     var agentAuto by remember { mutableStateOf(AppStore.agentAuto) }
     var bubbleOn by remember { mutableStateOf(AppStore.bubbleOn) }
     var watchers by remember { mutableStateOf(com.deepseek.chat.Watchers.load(ctx)) }
@@ -122,6 +123,7 @@ fun SettingsPage() {
                     .putString("effort",
                         if (effort in listOf("high","medium","low")) effort else "high")
                     .putString("talk_model", talkModel.trim())
+                    .putString("vision_model", visionModel.trim())
                     .putBoolean("agent_auto", agentAuto)
                     .commit()
                 if (ok && prefs.getString("api_key", "") == key.trim()) null
@@ -157,8 +159,10 @@ fun SettingsPage() {
                     }
                 }
                 Field(talkModel, { talkModel = it },
-                    "🎙 Voice reply model (blank = main model)")
-                Text("Pick a fast model for Talk — deepseek queues 4+ min on the free tier. Example: meta/llama-3.1-8b-instruct",
+                    "🎙 Fast model — voice & bubble (blank = main)")
+                Field(visionModel, { visionModel = it },
+                    "👁 Vision model — screenshots & photos (blank = main)")
+                Text("Three slots: 🧠 main chat (Models page) · 🎙 fast for voice · 👁 vision for images. Screenshots auto-use the vision slot.",
                     color = C.textLow, fontSize = 11.sp)
             }
             Section("🤖 Agent") {
@@ -339,7 +343,7 @@ fun SettingsPage() {
             }
 
             Section("ℹ️ About") {
-                Text("DeepSeek Chat v3.9 · Voice fusion", color = C.textMid, fontSize = 13.sp)
+                Text("DeepSeek Chat v3.10 · Model slots", color = C.textMid, fontSize = 13.sp)
                 Text("Screen control · screenshot Q&A · floating bubble · device actions · plan mode · reports · voice · vision. Free keys: build.nvidia.com",
                     color = C.textLow, fontSize = 12.sp)
             }

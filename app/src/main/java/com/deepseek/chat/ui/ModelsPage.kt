@@ -92,6 +92,25 @@ private enum class Filter(val label: String) {
     }
 }
 
+private fun loadSavedHealth(prefs: android.content.SharedPreferences): Map<String, String> {
+    return try {
+        val o = JSONObject(prefs.getString("model_health", "{}") ?: "{}")
+        val m = mutableMapOf<String, String>()
+        for (k in o.keys()) m[k] = o.optString(k, "")
+        m
+    } catch (_: Exception) { emptyMap() }
+}
+
+private fun ageText(ts: Long): String {
+    val min = (System.currentTimeMillis() - ts) / 60000
+    return when {
+        min < 1 -> "just now"
+        min < 60 -> "${min}m ago"
+        min < 60 * 24 -> "${min / 60}h ago"
+        else -> "${min / (60 * 24)}d ago"
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ModelsPage() {
@@ -105,9 +124,19 @@ fun ModelsPage() {
     var chatModel by remember { mutableStateOf(prefs.getString("model", "") ?: "") }
     var visionModel by remember { mutableStateOf(prefs.getString("vision_model", "") ?: "") }
 
-    var health by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var health by remember { mutableStateOf(loadSavedHealth(prefs)) }
     var checking by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf("") }
+    var selfChecked by remember { mutableStateOf(false) }
+
+    fun persistHealth() {
+        runCatching {
+            prefs.edit()
+                .putString("model_health", JSONObject(health).toString())
+                .putLong("model_health_ts", System.currentTimeMillis())
+                .apply()
+        }
+    }
 
     fun runCheck(targets: List<String>) {
         if (checking || targets.isEmpty()) return
@@ -124,7 +153,7 @@ fun ModelsPage() {
                 AppStore.handler.post {
                     health = health + (id to st)
                     progress = "${done.incrementAndGet()}/${targets.size}"
-                    if (done.get() == targets.size) checking = false
+                    if (done.get() == targets.size) { checking = false; persistHealth() }
                 }
                 sem.release()
             }.start()
@@ -144,7 +173,17 @@ fun ModelsPage() {
             }
         }.start()
     }
-    LaunchedEffect(Unit) { load() }
+    LaunchedEffect(Unit) {
+        load()
+        // auto-check just the CURRENT model once per visit (1 request, not 60)
+        if (!selfChecked) {
+            selfChecked = true
+            val me = prefs.getString("model", "") ?: ""
+            val ageMin = (System.currentTimeMillis() -
+                prefs.getLong("model_health_ts", 0)) / 60000
+            if (me.isNotBlank() && health[me] == null && ageMin > 30) runCheck(listOf(me))
+        }
+    }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("Models", style = MaterialTheme.typography.titleLarge,
@@ -185,6 +224,12 @@ fun ModelsPage() {
                 val dead = health.values.count { it == "dead" }
                 Text("✅$ok  🐌$slow  ❌$dead", color = C.textMid, fontSize = 12.sp)
             }
+        }
+        val savedTs = prefs.getLong("model_health_ts", 0)
+        if (savedTs > 0 && health.isNotEmpty()) {
+            Text("last checked ${ageText(savedTs)}",
+                color = C.textLow, fontSize = 10.sp,
+                modifier = Modifier.padding(bottom = 4.dp))
         }
 
         when {

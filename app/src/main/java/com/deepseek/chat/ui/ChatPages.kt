@@ -10,6 +10,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,11 +43,13 @@ import com.deepseek.chat.engine.Media
 @Composable
 fun ChatsListPage(onOpen: (String) -> Unit) {
     var deleteTarget by remember { mutableStateOf<Chat?>(null) }
+    var menuTarget by remember { mutableStateOf<Chat?>(null) }
     var query by remember { mutableStateOf("") }
     val q = query.trim()
-    val shown = if (q.isEmpty()) AppStore.chats else AppStore.chats.filter { c ->
+    val filtered = if (q.isEmpty()) AppStore.chats else AppStore.chats.filter { c ->
         c.title.contains(q, true) || c.msgs.any { it.content.contains(q, true) }
     }
+    val shown = filtered.sortedByDescending { it.pinned }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {
             Text("Chats", style = MaterialTheme.typography.titleLarge, color = C.textHi,
@@ -68,18 +71,29 @@ fun ChatsListPage(onOpen: (String) -> Unit) {
                         containerColor = if (chat.id == AppStore.activeId) C.card else C.surface),
                         modifier = Modifier.fillMaxWidth().combinedClickable(
                             onClick = { AppStore.activeId = chat.id; onOpen(chat.id) },
-                            onLongClick = { deleteTarget = chat })) {
+                            onLongClick = { menuTarget = chat })) {
                         Column(Modifier.padding(14.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("💬 ", fontSize = 15.sp)
                                 Text(chat.title.ifBlank { "New chat" },
                                     style = MaterialTheme.typography.titleMedium,
                                     color = C.textHi, maxLines = 1)
+                                if (chat.pinned) Text("  📌", fontSize = 12.sp)
                             }
-                            val last = chat.msgs.lastOrNull()
-                            Text(last?.content?.take(90)?.replace('\n', ' ') ?: "No messages yet",
-                                color = C.textMid, fontSize = 13.sp, maxLines = 1,
-                                modifier = Modifier.padding(top = 4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(top = 4.dp)) {
+                                val last = chat.msgs.lastOrNull()
+                                val who = when (last?.role) { "user" -> "🧑 "; "assistant" -> "🤖 "; else -> "" }
+                                Text(who + (last?.content?.take(80)?.replace('\n', ' ')
+                                    ?: "No messages yet"),
+                                    color = C.textMid, fontSize = 13.sp, maxLines = 1,
+                                    modifier = Modifier.weight(1f))
+                                if ((last?.ts ?: 0L) > 0)
+                                    Text(java.text.SimpleDateFormat("d MMM HH:mm",
+                                        java.util.Locale.getDefault())
+                                        .format(java.util.Date(last!!.ts)),
+                                        color = C.textLow, fontSize = 10.sp)
+                            }
                         }
                     }
                 }
@@ -91,6 +105,32 @@ fun ChatsListPage(onOpen: (String) -> Unit) {
             Icon(Icons.Filled.Add, "New chat", tint = Color.White)
         }
     }
+    menuTarget?.let { c ->
+        AlertDialog(onDismissRequest = { menuTarget = null },
+            title = { Text(c.title.ifBlank { "New chat" },
+                style = MaterialTheme.typography.titleMedium) },
+            text = { Text("Last activity: " + (c.msgs.lastOrNull()?.ts?.takeIf { it > 0 }
+                ?.let { java.text.SimpleDateFormat("d MMM yyyy, HH:mm", java.util.Locale.getDefault())
+                    .format(java.util.Date(it)) } ?: "never"),
+                color = C.textMid, fontSize = 13.sp) },
+            confirmButton = {
+                Column {
+                    TextButton(onClick = {
+                        c.pinned = !c.pinned
+                        AppStore.persist()
+                        menuTarget = null
+                    }) { Text(if (c.pinned) "📍 Unpin" else "📌 Pin to top",
+                        color = C.accent) }
+                    TextButton(onClick = {
+                        deleteTarget = c
+                        menuTarget = null
+                    }) { Text("🗑 Delete chat", color = C.red) }
+                    TextButton(onClick = { menuTarget = null })
+                        { Text("Cancel", color = C.textLow) }
+                }
+            })
+    }
+
     deleteTarget?.let { c ->
         AlertDialog(onDismissRequest = { deleteTarget = null },
             title = { Text("Delete chat?") },
@@ -115,6 +155,14 @@ fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> U
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     var showVisionDialog by remember { mutableStateOf(false) }
+    var msgMenu by remember { mutableStateOf<Pair<Int, String>?>(null) }
+
+    fun copyText(s: String) {
+        val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+            as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("msg", s))
+        android.widget.Toast.makeText(ctx, "Copied ✓", android.widget.Toast.LENGTH_SHORT).show()
+    }
 
     fun shareMarkdown() {
         val md = StringBuilder("# ${chat?.title}\n")
@@ -214,10 +262,14 @@ fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> U
             LazyColumn(state = listState, modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(msgs) { m ->
+                itemsIndexed(msgs) { idx, m ->
                     when {
-                        m.role == "user" -> UserBubble(m.content, m.images)
-                        else -> AiBubble(m.content)
+                        m.role == "user" -> Box(Modifier.combinedClickable(
+                            onClick = {}, onLongClick = { msgMenu = idx to "user" })
+                            .fillMaxWidth()) { UserBubble(m.content, m.images, m.ts) }
+                        else -> Box(Modifier.combinedClickable(
+                            onClick = {}, onLongClick = { msgMenu = idx to "ai" })
+                            .fillMaxWidth()) { AiBubble(m.content) }
                     }
                 }
                 AppStore.thinkingText?.let { t -> item { ThinkingBubble(t) } }
@@ -226,6 +278,9 @@ fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> U
                 if (showPlan) item { PlanCard() }
                 if (AppStore.statusText.isNotEmpty()) item { StatusLine(AppStore.statusText) }
                 AppStore.errorText?.let { e -> item { ErrorBubble(e) } }
+                if (AppStore.errorText?.contains("404") == true ||
+                    AppStore.errorText?.contains("exist on your server") == true)
+                    item { ModelRescueBanner() }
             }
 
             LaunchedEffect(itemCount) {
@@ -278,6 +333,36 @@ fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> U
     }
 
     if (showVisionDialog) VisionModelDialog(onDismiss = { showVisionDialog = false })
+
+    msgMenu?.let { (idx, kind) ->
+        val m = msgs.getOrNull(idx)
+        AlertDialog(onDismissRequest = { msgMenu = null },
+            title = { Text(if (kind == "user") "Your message" else "AI reply",
+                style = MaterialTheme.typography.titleMedium) },
+            text = { Text(m?.content?.take(160)?.replace('\n', ' ') ?: "",
+                maxLines = 3, color = C.textMid, fontSize = 13.sp) },
+            confirmButton = {
+                Column {
+                    if (kind == "ai") {
+                        TextButton(onClick = {
+                            msgMenu = null
+                            if (!AppStore.regenerate())
+                                android.widget.Toast.makeText(ctx, "Nothing to regenerate",
+                                    android.widget.Toast.LENGTH_SHORT).show()
+                        }) { Text("🔄 Regenerate reply", color = C.accent) }
+                    } else {
+                        TextButton(onClick = {
+                            val t = AppStore.editResend(idx)
+                            msgMenu = null
+                            if (t != null) input = t
+                        }) { Text("✏️ Edit & resend", color = C.accent) }
+                    }
+                    TextButton(onClick = { copyText(m?.content ?: ""); msgMenu = null })
+                        { Text("📋 Copy", color = C.textHi) }
+                    TextButton(onClick = { msgMenu = null }) { Text("Cancel", color = C.textLow) }
+                }
+            })
+    }
 }
 
 // ---------- pieces ----------
@@ -357,7 +442,7 @@ fun InputBar(input: String, onInput: (String) -> Unit, busy: Boolean, agentOn: B
 }
 
 @Composable
-fun UserBubble(text: String, images: List<String> = emptyList()) {
+fun UserBubble(text: String, images: List<String> = emptyList(), ts: Long = 0) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 40.dp), horizontalAlignment = Alignment.End) {
         if (images.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (p in images.take(6)) AsyncImage(model = java.io.File(p),
@@ -366,6 +451,35 @@ fun UserBubble(text: String, images: List<String> = emptyList()) {
         }
         Box(Modifier.background(C.userBubble(), RoundedCornerShape(20.dp)).padding(12.dp)) {
             Text(text, color = Color.White, fontSize = 15.sp)
+        }
+        if (ts > 0) Text(java.text.SimpleDateFormat("d MMM, HH:mm",
+            java.util.Locale.getDefault()).format(java.util.Date(ts)),
+            color = C.textLow, fontSize = 10.sp,
+            modifier = Modifier.padding(top = 2.dp))
+    }
+}
+
+@Composable
+fun ModelRescueBanner() {
+    val ctx = LocalContext.current
+    val lastGood = AppStore.prefs().getString("last_good_model", "") ?: ""
+    val current = AppStore.prefs().getString("model", NviClient.DEFAULT_MODEL)
+    if (lastGood.isBlank() || lastGood == current) return
+    Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(
+        containerColor = C.card), modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text("Your model is dead. Last working: ${lastGood.substringAfterLast('/')}",
+                color = C.textMid, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            Button(onClick = {
+                AppStore.prefs().edit().putString("model", lastGood).apply()
+                AppStore.errorText = null
+                android.widget.Toast.makeText(ctx,
+                    "Switched to ${lastGood.substringAfterLast('/')}",
+                    android.widget.Toast.LENGTH_SHORT).show()
+            }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                Text("Switch ✓", fontSize = 12.sp)
+            }
         }
     }
 }

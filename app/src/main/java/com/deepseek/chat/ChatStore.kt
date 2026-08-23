@@ -6,12 +6,14 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
-data class Msg(val role: String, val content: String, val images: List<String> = emptyList())
+data class Msg(val role: String, val content: String,
+               val images: List<String> = emptyList(), val ts: Long = 0)
 
 data class Chat(
     val id: String,
     var title: String,
-    val msgs: MutableList<Msg> = mutableListOf()
+    val msgs: MutableList<Msg> = mutableListOf(),
+    var pinned: Boolean = false
 )
 
 object ChatStore {
@@ -38,9 +40,11 @@ object ChatStore {
                         m.optJSONArray("images")?.let { ia ->
                             for (k in 0 until ia.length()) imgs.add(ia.getString(k))
                         }
-                        msgs.add(Msg(m.getString("role"), m.getString("content"), imgs))
+                        msgs.add(Msg(m.getString("role"), m.getString("content"), imgs,
+                            m.optLong("ts", 0)))
                     }
-                    out.add(Chat(o.getString("id"), o.getString("title"), msgs))
+                    out.add(Chat(o.getString("id"), o.getString("title"), msgs,
+                        o.optBoolean("pinned", false)))
                 }
             }
         } catch (_: Exception) {
@@ -86,6 +90,7 @@ object ChatStore {
             val ca = JSONArray()
             for (m in c.msgs) {
                 val mo = JSONObject().put("role", m.role).put("content", m.content)
+                if (m.ts > 0) mo.put("ts", m.ts)
                 if (m.images.isNotEmpty()) {
                     val ia = JSONArray()
                     for (img in m.images) ia.put(img)
@@ -93,10 +98,12 @@ object ChatStore {
                 }
                 ca.put(mo)
             }
-            arr.put(JSONObject()
+            val co = JSONObject()
                 .put("id", c.id)
                 .put("title", c.title)
-                .put("msgs", ca))
+                .put("msgs", ca)
+            if (c.pinned) co.put("pinned", true)
+            arr.put(co)
         }
         return arr.toString()
     }
@@ -115,10 +122,12 @@ object ChatStore {
                     m.optJSONArray("images")?.let { ia ->
                         for (k in 0 until ia.length()) imgs.add(ia.getString(k))
                     }
-                    msgs.add(Msg(m.getString("role"), m.getString("content"), imgs))
+                    msgs.add(Msg(m.getString("role"), m.getString("content"), imgs,
+                        m.optLong("ts", 0)))
                 }
                 out.add(Chat(o.optString("id", UUID.randomUUID().toString()),
-                    o.optString("title", "Imported"), msgs))
+                    o.optString("title", "Imported"), msgs,
+                    o.optBoolean("pinned", false)))
             }
             if (out.isEmpty()) null else out
         } catch (_: Exception) {

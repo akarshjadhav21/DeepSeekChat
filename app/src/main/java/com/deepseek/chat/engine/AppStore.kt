@@ -94,6 +94,9 @@ object AppStore {
     // fast talk_model across every agent tool-turn instead of snapping back to the main model.
     private var activeModelOverride: String? = null
 
+    // The model used by the in-flight/last stream (for last_good_model tracking).
+    private var currentModel: String? = null
+
     // ---------- sending ----------
 
     fun send(text: String, modelOverride: String? = null, onNeedKey: () -> Unit) {
@@ -105,12 +108,17 @@ object AppStore {
         pendingImages = emptyList()
 
         val chat = active() ?: return
-        chat.msgs.add(Msg("user", text.trim(), imgs.map { it.absolutePath }))
+        chat.msgs.add(Msg("user", text.trim(), imgs.map { it.absolutePath },
+            System.currentTimeMillis()))
         agentSteps = 0
         activeModelOverride = modelOverride
         if (chat.title == "New chat" && chat.msgs.size >= 2) autoTitle(chat)
         persist()
-        startStream(modelOverride)
+        // image turns go to the Vision slot automatically (falls back to flow override)
+        val effective = if (imgs.isNotEmpty())
+            prefsWrap.getString("vision_model", "")?.trim()?.ifBlank { null } ?: modelOverride
+        else modelOverride
+        startStream(effective)
     }
 
     /** Called by the floating bubble over other apps. Returns false if busy (text-only). */
@@ -137,6 +145,33 @@ object AppStore {
         fromBubble = true
         send(text) { fromBubble = false }
         return true
+    }
+
+    /** Drop trailing AI reply(ies) and re-answer the last user turn. */
+    fun regenerate(): Boolean {
+        if (busy) return false
+        val chat = active() ?: return false
+        var dropped = 0
+        while (chat.msgs.lastOrNull()?.role == "assistant") {
+            chat.msgs.removeAt(chat.msgs.size - 1); dropped++
+        }
+        if (dropped == 0 || chat.msgs.none { it.role == "user" }) return false
+        agentSteps = 0
+        errorText = null
+        persist()
+        startStream(activeModelOverride)
+        return true
+    }
+
+    /** Truncate conversation at a user message and hand its text back for editing. */
+    fun editResend(index: Int): String? {
+        if (busy) return null
+        val chat = active() ?: return null
+        if (index !in chat.msgs.indices || chat.msgs[index].role != "user") return null
+        val text = chat.msgs[index].content
+        chat.msgs.subList(index, chat.msgs.size).clear()
+        persist()
+        return text
     }
 
     private fun autoTitle(chat: Chat) {        val convo = chat.msgs.takeLast(4).joinToString("\n") { "${it.role}: ${it.content.take(120)}" }
@@ -169,6 +204,7 @@ object AppStore {
 
         markBusy(true); thinkingText = null; toolText = null; errorText = null
         statusText = "Contacting model…"
+        currentModel = model
 
         val msgs0 = history()
         val sysPrompt = when {
@@ -207,8 +243,12 @@ object AppStore {
                     fromBubble = false
                     errorText = err.message ?: "Error"
                 } else if (reply.isNotBlank() && chat != null) {
-                    chat.msgs.add(Msg("assistant", reply))
+                    chat.msgs.add(Msg("assistant", reply, emptyList(),
+                        System.currentTimeMillis()))
                     persist()
+                    currentModel?.let {
+                        prefsWrap.edit().putString("last_good_model", it).apply()
+                    }
                 }
                 if (agentOn && err == null && !stopped && reply.isNotBlank()) {
                     if (planOn) maybeTakePlan(reply) else maybeRunAgentCmd(reply)
