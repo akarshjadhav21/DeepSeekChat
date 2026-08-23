@@ -90,6 +90,10 @@ object AppStore {
     fun stopStreaming() { activeCall?.cancel(); activeCall = null }
     private var activeCall: okhttp3.Call? = null
 
+    // Model override of the CURRENT conversation flow — voice/bubble flows keep their
+    // fast talk_model across every agent tool-turn instead of snapping back to the main model.
+    private var activeModelOverride: String? = null
+
     // ---------- sending ----------
 
     fun send(text: String, modelOverride: String? = null, onNeedKey: () -> Unit) {
@@ -103,6 +107,7 @@ object AppStore {
         val chat = active() ?: return
         chat.msgs.add(Msg("user", text.trim(), imgs.map { it.absolutePath }))
         agentSteps = 0
+        activeModelOverride = modelOverride
         if (chat.title == "New chat" && chat.msgs.size >= 2) autoTitle(chat)
         persist()
         startStream(modelOverride)
@@ -230,7 +235,7 @@ object AppStore {
         val chat = active() ?: return
         chat.msgs.add(Msg("user", text))
         persist()
-        startStream()
+        startStream(activeModelOverride)
     }
 
     private fun maybeRunAgentCmd(reply: String) {

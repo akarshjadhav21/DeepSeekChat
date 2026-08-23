@@ -11,8 +11,8 @@ android {
         applicationId = "com.deepseek.chat"
         minSdk = 26
         targetSdk = 34
-        versionCode = 25
-        versionName = "3.8.1"
+        versionCode = 26
+        versionName = "3.9.0"
     }
 
     signingConfigs {

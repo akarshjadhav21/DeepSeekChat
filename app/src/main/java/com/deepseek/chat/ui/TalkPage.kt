@@ -536,6 +536,31 @@ fun TalkPage() {
                 Text(" 🔊 Speak replies", color = C.textMid, fontSize = 12.sp)
             }
         }
+
+        // voice → device actions: same agent as chat, toggled right here
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = AppStore.agentOn,
+                onClick = {
+                    AppStore.agentOn = !AppStore.agentOn
+                    if (!AppStore.agentOn && !AppStore.planRunning) AppStore.discardPlan()
+                    AppStore.planOn = AppStore.agentOn && AppStore.planOn
+                    note = if (AppStore.agentOn) "🤖 Agent ON — spoken commands can act"
+                    else "Agent off — plain chat replies"
+                },
+                label = { Text(if (AppStore.agentOn) "🤖 Agent ON" else "🤖 Agent",
+                    fontSize = 12.sp) },
+                shape = CircleShape,
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = Color(0xFF173B25),
+                    selectedLabelColor = C.green))
+            if (AppStore.agentOn) {
+                val tm = prefs.getString("talk_model", "")?.trim().orEmpty()
+                Text(if (tm.isBlank()) "· main model" else "· ⚡ ${tm.substringAfterLast('/')}",
+                    color = C.textLow, fontSize = 11.sp)
+            }
+        }
         TextButton(onClick = {
             micGen++
             note = "Mic service reset — tap the orb"
