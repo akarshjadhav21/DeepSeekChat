@@ -145,7 +145,7 @@ object DeviceActions {
         val q = name.lowercase()
         var best: android.content.pm.ApplicationInfo? = null
         var bestScore = 0
-        for (info in pm.getInstalledPackages(PackageManager.GET_META_DATA)) {
+        for (info in pm.getInstalledApplications(PackageManager.GET_META_DATA)) {
             val label = runCatching { pm.getApplicationLabel(info).toString() }.getOrNull()?.lowercase() ?: continue
             val pkg = info.packageName.lowercase()
             val score = maxOf(
