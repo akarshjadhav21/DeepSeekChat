@@ -335,7 +335,7 @@ fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> U
     if (showVisionDialog) VisionModelDialog(onDismiss = { showVisionDialog = false })
 
     msgMenu?.let { (idx, kind) ->
-        val m = msgs.getOrNull(idx)
+        val m = chat?.msgs?.getOrNull(idx)
         AlertDialog(onDismissRequest = { msgMenu = null },
             title = { Text(if (kind == "user") "Your message" else "AI reply",
                 style = MaterialTheme.typography.titleMedium) },
