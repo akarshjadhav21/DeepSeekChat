@@ -3,6 +3,7 @@ package com.deepseek.chat.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -62,6 +63,12 @@ fun SettingsPage() {
     var talkModel by remember { mutableStateOf(prefs.getString("talk_model", "") ?: "") }
     var agentAuto by remember { mutableStateOf(AppStore.agentAuto) }
     var bubbleOn by remember { mutableStateOf(AppStore.bubbleOn) }
+    var watchers by remember { mutableStateOf(com.deepseek.chat.Watchers.load(prefs)) }
+    var watchOn by remember { mutableStateOf(com.deepseek.chat.Watchers.isOn(prefs)) }
+    var watchMin by remember { mutableStateOf(prefs.getInt("watch_interval_min", 30)) }
+    var newMetric by remember { mutableStateOf("battery") }
+    var newOp by remember { mutableStateOf("<") }
+    var newVal by remember { mutableStateOf("20") }
     var reportsOn by remember { mutableStateOf(prefs.getBoolean("report_enabled", false)) }
     var reportsHours by remember { mutableStateOf(prefs.getInt("report_hours", 12)) }
     var status by remember { mutableStateOf<Pair<String, Boolean>?>(null) } // msg, isError
@@ -198,6 +205,82 @@ fun SettingsPage() {
                 Text("One-time: Android Settings → Accessibility → DeepSeek Chat → ON. Lets ui-tap / ui-read verbs work inside other apps.",
                     color = C.textLow, fontSize = 11.sp)
             }
+            Section("👀 Watchers") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Check in background", color = C.textHi,
+                        modifier = Modifier.weight(1f))
+                    Switch(checked = watchOn, onCheckedChange = { on ->
+                        com.deepseek.chat.Watchers.setEnabled(ctx, on)
+                        watchOn = on
+                        status = (if (on) "👀 Watchers run every ${watchMin}min"
+                        else "Watchers off") to false
+                    })
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (m in listOf(15, 30, 60)) {
+                        FilterChip(selected = watchMin == m, onClick = {
+                            watchMin = m
+                            if (watchOn) com.deepseek.chat.Watchers.schedule(ctx, m)
+                            else prefs.edit().putInt("watch_interval_min", m).commit()
+                        }, label = { Text("${m}m") }, shape = CircleShape)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                if (watchers.isEmpty())
+                    Text("No watchers yet — add one below (e.g. 🔋 Battery < 20%).",
+                        color = C.textLow, fontSize = 12.sp)
+                for (w in watchers) {
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 2.dp)) {
+                        Text(com.deepseek.chat.Watchers.ruleText(w), color = C.textHi,
+                            fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Switch(checked = w.enabled, onCheckedChange = { en ->
+                            watchers = watchers.map {
+                                if (it.id == w.id) it.copy(enabled = en) else it
+                            }
+                            com.deepseek.chat.Watchers.save(ctx, watchers)
+                        })
+                        Text("✕", color = C.red, fontSize = 15.sp,
+                            modifier = Modifier.padding(start = 10.dp).clickable {
+                                watchers = watchers.filterNot { it.id == w.id }
+                                com.deepseek.chat.Watchers.save(ctx, watchers)
+                            })
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("New watcher", color = C.textMid, fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 4.dp)) {
+                    for ((k, lbl) in listOf("battery" to "🔋", "storage" to "💾", "ram" to "🧠")) {
+                        FilterChip(selected = newMetric == k, onClick = { newMetric = k },
+                            label = { Text(lbl) }, shape = CircleShape)
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 4.dp)) {
+                    for (o in listOf("<", ">")) {
+                        FilterChip(selected = newOp == o, onClick = { newOp = o },
+                            label = { Text(o) }, shape = CircleShape)
+                    }
+                    OutlinedTextField(value = newVal, onValueChange = { v ->
+                        newVal = v.filter { it.isDigit() }.take(3)
+                    }, label = { Text("%") }, singleLine = true,
+                        modifier = Modifier.width(90.dp),
+                        shape = RoundedCornerShape(12.dp))
+                    Button(onClick = {
+                        val v = newVal.toIntOrNull() ?: return@Button
+                        val r = com.deepseek.chat.WatchRule(
+                            java.util.UUID.randomUUID().toString(), newMetric, newOp, v)
+                        watchers = watchers + r
+                        com.deepseek.chat.Watchers.save(ctx, watchers)
+                        newVal = "20"
+                        status = "✓ Watcher added${if (!watchOn) " — turn on 'Check in background'" else ""}" to false
+                    }, shape = CircleShape) { Text("+ Add") }
+                }
+                Text("Alerts fire once per trip → notification + entry in the 👀 Watchers chat. AI writes a short suggestion.",
+                    color = C.textLow, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+            }
             Section("⏰ Scheduled reports") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Device report", color = C.textHi, modifier = Modifier.weight(1f))
@@ -256,7 +339,7 @@ fun SettingsPage() {
             }
 
             Section("ℹ️ About") {
-                Text("DeepSeek Chat v3.7 · Screenshot Q&A", color = C.textMid, fontSize = 13.sp)
+                Text("DeepSeek Chat v3.8 · Watchers", color = C.textMid, fontSize = 13.sp)
                 Text("Screen control · screenshot Q&A · floating bubble · device actions · plan mode · reports · voice · vision. Free keys: build.nvidia.com",
                     color = C.textLow, fontSize = 12.sp)
             }
