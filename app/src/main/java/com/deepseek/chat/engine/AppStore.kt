@@ -27,6 +27,8 @@ object AppStore {
     var openTalk by mutableStateOf(false)
     var openReports by mutableStateOf(false)
     var openChat by mutableStateOf(false)
+    var bubbleOn by mutableStateOf(false)
+    private var fromBubble by mutableStateOf(false)
 
     var agentOn by mutableStateOf(false)
     var agentAuto by mutableStateOf(false)
@@ -106,8 +108,21 @@ object AppStore {
         startStream(modelOverride)
     }
 
-    private fun autoTitle(chat: Chat) {
-        val convo = chat.msgs.takeLast(4).joinToString("\n") { "${it.role}: ${it.content.take(120)}" }
+    /** Called by the floating bubble over other apps. Returns false if busy. */
+    fun sendFromBubble(text: String): Boolean {
+        if (!ready || busy || text.isBlank()) return false
+        val key = prefsWrap.getString("api_key", "") ?: ""
+        if (key.isBlank()) {
+            com.deepseek.chat.AgentNotify.info(appCtx, "🔑 API key missing",
+                "Open DeepSeek Chat → Settings to add your NVIDIA key.")
+            return true
+        }
+        fromBubble = true
+        send(text) { fromBubble = false }
+        return true
+    }
+
+    private fun autoTitle(chat: Chat) {        val convo = chat.msgs.takeLast(4).joinToString("\n") { "${it.role}: ${it.content.take(120)}" }
         Thread {
             try {
                 val t = NviClient.complete(
@@ -180,6 +195,16 @@ object AppStore {
                 if (agentOn && err == null && !stopped && reply.isNotBlank()) {
                     if (planOn) maybeTakePlan(reply) else maybeRunAgentCmd(reply)
                 }
+                if (fromBubble && err == null && !stopped && reply.isNotBlank()) {
+                    // notify only on FINAL answers, not intermediate tool-call turns
+                    val toolTurn = agentOn &&
+                        (Agent.extractCmd(reply) != null || Agent.extractPlan(reply).isNotEmpty())
+                    if (!toolTurn) {
+                        fromBubble = false
+                        com.deepseek.chat.AgentNotify.info(appCtx, "💬 Reply ready",
+                            reply.replace(Regex("```[\\s\\S]*?```"), " … ").take(200))
+                    }
+                }
             }}
         )
     }
@@ -248,11 +273,20 @@ object AppStore {
         toolText = "$ $cmd\n⏳ running…"
         Thread {
             var fireIntent: Intent? = null
-            val out = if (cmd.startsWith("intent ")) {
-                val r = com.deepseek.chat.DeviceActions.run(cmd.removePrefix("intent "), appCtx)
-                fireIntent = r.second
-                r.first
-            } else Agent.execute(cmd)
+            val out = when {
+                cmd.startsWith("ui ") -> {
+                    val o = com.deepseek.chat.UiActions.execute(cmd.removePrefix("ui "))
+                    if (o.startsWith("[error] Accessibility"))
+                        fireIntent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    o
+                }
+                cmd.startsWith("intent ") -> {
+                    val r = com.deepseek.chat.DeviceActions.run(cmd.removePrefix("intent "), appCtx)
+                    fireIntent = r.second
+                    r.first
+                }
+                else -> Agent.execute(cmd)
+            }
             handler.post {
                 toolText = "$ $cmd\n${out.take(Agent.MAX_OUT)}"
                 fireIntent?.let { intentEvent = it }
@@ -312,6 +346,12 @@ object AppStore {
                         } catch (e: Exception) {
                             "[error] ${e.message}"
                         }
+                    }
+                    cmd.startsWith("ui ") -> {
+                        val o = com.deepseek.chat.UiActions.execute(cmd.removePrefix("ui "))
+                        if (o.startsWith("[error] Accessibility"))
+                            intentEvent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                        o
                     }
                     cmd.startsWith("intent ") -> {
                         val r = com.deepseek.chat.DeviceActions.run(cmd.removePrefix("intent "), appCtx)

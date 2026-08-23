@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hands_acc_description">Lets the AI assistant read the screen and tap, swipe and type for you inside other apps — only when you approve each action.</string>
+</resources>

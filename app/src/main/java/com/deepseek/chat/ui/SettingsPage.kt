@@ -61,6 +61,7 @@ fun SettingsPage() {
     var effort by remember { mutableStateOf(prefs.getString("effort", "high") ?: "high") }
     var talkModel by remember { mutableStateOf(prefs.getString("talk_model", "") ?: "") }
     var agentAuto by remember { mutableStateOf(AppStore.agentAuto) }
+    var bubbleOn by remember { mutableStateOf(AppStore.bubbleOn) }
     var reportsOn by remember { mutableStateOf(prefs.getBoolean("report_enabled", false)) }
     var reportsHours by remember { mutableStateOf(prefs.getInt("report_hours", 12)) }
     var status by remember { mutableStateOf<Pair<String, Boolean>?>(null) } // msg, isError
@@ -163,6 +164,40 @@ fun SettingsPage() {
                 Text("Blocklist still enforced. Long-press 🤖 also toggles this.",
                     color = C.textLow, fontSize = 11.sp)
             }
+            Section("🖐 Hands") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("🫧 Floating bubble", color = C.textHi,
+                        modifier = Modifier.weight(1f))
+                    Switch(checked = bubbleOn, onCheckedChange = { on ->
+                        if (on) {
+                            if (!android.provider.Settings.canDrawOverlays(ctx)) {
+                                AppStore.intentEvent = android.content.Intent(
+                                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    android.net.Uri.parse("package:" + ctx.packageName))
+                                status = "Grant 'Display over other apps', then flip this on" to false
+                            } else if (com.deepseek.chat.Bubble.start(ctx)) {
+                                bubbleOn = true
+                                status = "🫧 Bubble floating — tap it over any app" to false
+                            } else status = "Couldn't start bubble" to true
+                        } else {
+                            com.deepseek.chat.Bubble.stop(ctx)
+                            bubbleOn = false
+                        }
+                    })
+                }
+                Text("Chat with the AI over any app — it can read & tap the screen underneath while you ask.",
+                    color = C.textLow, fontSize = 11.sp)
+                OutlinedButton(onClick = {
+                    AppStore.intentEvent = android.content.Intent(
+                        android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                }, shape = RoundedCornerShape(14.dp), modifier = Modifier.padding(top = 8.dp)) {
+                    Text(if (com.deepseek.chat.AgentAccessibilityService.connected)
+                        "♿ Screen control: ON ✓ (tap to manage)"
+                    else "♿ Enable screen control")
+                }
+                Text("One-time: Android Settings → Accessibility → DeepSeek Chat → ON. Lets ui-tap / ui-read verbs work inside other apps.",
+                    color = C.textLow, fontSize = 11.sp)
+            }
             Section("⏰ Scheduled reports") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Device report", color = C.textHi, modifier = Modifier.weight(1f))
@@ -221,8 +256,8 @@ fun SettingsPage() {
             }
 
             Section("ℹ️ About") {
-                Text("DeepSeek Chat v3.5 · Hands phase 1", color = C.textMid, fontSize = 13.sp)
-                Text("Agent device actions · plan mode · scheduled reports · templates & one-tap releases · voice · vision. Free keys: build.nvidia.com",
+                Text("DeepSeek Chat v3.6 · Hands phase 2", color = C.textMid, fontSize = 13.sp)
+                Text("Screen control · floating bubble · device actions · plan mode · reports · voice · vision. Free keys: build.nvidia.com",
                     color = C.textLow, fontSize = 12.sp)
             }
 
