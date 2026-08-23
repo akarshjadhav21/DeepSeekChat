@@ -168,6 +168,7 @@ class BubbleService : android.app.Service() {
 
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val ask = btn("▶ Ask", 0xFF7C4DFF.toInt())
+        val shot = btn("📸", 0x33FFFFFF)
         val hide = btn("–", 0x33FFFFFF)
         val quit = btn("⏻", 0x33FFFFFF)
 
@@ -178,12 +179,18 @@ class BubbleService : android.app.Service() {
             val ok = AppStore.sendFromBubble(q)
             if (!ok) Toast.makeText(this, "Busy — try again in a moment", Toast.LENGTH_SHORT).show()
         }
+        shot.setOnClickListener {
+            collapseToBubble()
+            ScreenShot.launch(this, autoAsk = true,
+                question = "What's on this screen? Answer briefly.")
+        }
         hide.setOnClickListener { collapseToBubble() }
         quit.setOnClickListener {
             stopSelf()
         }
 
         row.addView(ask, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(shot, LinearLayout.LayoutParams(dp(42), LinearLayout.LayoutParams.MATCH_PARENT).apply { leftMargin = dp(6) })
         row.addView(hide, LinearLayout.LayoutParams(dp(40), LinearLayout.LayoutParams.MATCH_PARENT).apply { leftMargin = dp(6) })
         row.addView(quit, LinearLayout.LayoutParams(dp(40), LinearLayout.LayoutParams.MATCH_PARENT).apply { leftMargin = dp(6) })
         card.addView(row, LinearLayout.LayoutParams(

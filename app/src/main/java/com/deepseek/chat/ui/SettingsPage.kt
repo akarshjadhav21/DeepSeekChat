@@ -256,8 +256,8 @@ fun SettingsPage() {
             }
 
             Section("ℹ️ About") {
-                Text("DeepSeek Chat v3.6 · Hands phase 2", color = C.textMid, fontSize = 13.sp)
-                Text("Screen control · floating bubble · device actions · plan mode · reports · voice · vision. Free keys: build.nvidia.com",
+                Text("DeepSeek Chat v3.7 · Screenshot Q&A", color = C.textMid, fontSize = 13.sp)
+                Text("Screen control · screenshot Q&A · floating bubble · device actions · plan mode · reports · voice · vision. Free keys: build.nvidia.com",
                     color = C.textLow, fontSize = 12.sp)
             }
 

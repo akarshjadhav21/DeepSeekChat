@@ -109,7 +109,7 @@ object AppStore {
     }
 
     /** Called by the floating bubble over other apps. Returns false if busy. */
-    fun sendFromBubble(text: String): Boolean {
+    fun sendFromBubble(text: String, image: File? = null): Boolean {
         if (!ready || busy || text.isBlank()) return false
         val key = prefsWrap.getString("api_key", "") ?: ""
         if (key.isBlank()) {
@@ -117,6 +117,7 @@ object AppStore {
                 "Open DeepSeek Chat → Settings to add your NVIDIA key.")
             return true
         }
+        if (image != null) pendingImages = pendingImages + image
         fromBubble = true
         send(text) { fromBubble = false }
         return true

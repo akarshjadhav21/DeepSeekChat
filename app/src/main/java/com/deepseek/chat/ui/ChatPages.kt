@@ -238,6 +238,10 @@ fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> U
                 onAttach = {
                     pickMedia.launch(arrayOf("image/*", "video/*"))
                 },
+                onScreenshot = {
+                    ctx.startActivity(android.content.Intent(ctx,
+                        com.deepseek.chat.CaptureActivity::class.java))
+                },
                 onSend = {
                     AppStore.send(input) { onNeedSettings() }
                     input = ""
@@ -308,7 +312,8 @@ fun PendingImagesRow() {
 
 @Composable
 fun InputBar(input: String, onInput: (String) -> Unit, busy: Boolean, agentOn: Boolean,
-             canAttach: Boolean, onAttach: () -> Unit, onSend: () -> Unit, onStop: () -> Unit) {
+             canAttach: Boolean, onAttach: () -> Unit, onScreenshot: () -> Unit = {},
+             onSend: () -> Unit, onStop: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.Bottom) {
         OutlinedTextField(value = input, onValueChange = onInput, modifier = Modifier.weight(1f),
             placeholder = { Text(if (agentOn) "Ask the agent…" else "Message DeepSeek…",
@@ -325,6 +330,12 @@ fun InputBar(input: String, onInput: (String) -> Unit, busy: Boolean, agentOn: B
             shape = CircleShape, colors = IconButtonDefaults.filledIconButtonColors(
                 containerColor = C.card, contentColor = C.accent)) {
             Icon(Icons.Filled.AttachFile, "Attach")
+        }
+        Spacer(Modifier.width(6.dp))
+        FilledIconButton(onClick = onScreenshot, enabled = canAttach,
+            shape = CircleShape, colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = C.card, contentColor = C.accent)) {
+            Icon(Icons.Filled.PhotoCamera, "Screenshot Q&A")
         }
         Spacer(Modifier.width(6.dp))
         Button(onClick = if (busy) onStop else onSend,
