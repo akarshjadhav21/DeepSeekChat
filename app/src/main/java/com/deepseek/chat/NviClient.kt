@@ -155,7 +155,7 @@ object NviClient {
         val hint = when (code) {
             401 -> "Invalid or missing API key. Check Settings."
             403 -> "Key rejected — regenerate a free one at build.nvidia.com."
-            404 -> "Model not found. Try another model name in Settings."
+            404 -> "This model doesn't exist on your server. Fix: tap the 🧠 chip in chat → 🩺 Check which work → pick any ✅ model."
             429 -> "Rate limit reached on NVIDIA free tier. Wait a bit."
             500, 502, 503 -> "NVIDIA server busy ($code). Try again shortly."
             504 -> "NVIDIA's queue gave up after ~5 min. Free tier is overloaded — just retry, streaming usually gets through."

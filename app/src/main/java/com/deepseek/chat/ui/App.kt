@@ -103,7 +103,8 @@ fun DeepSeekApp() {
                 composable("conv/{id}", arguments = listOf(navArgument("id") { type = NavType.StringType })) {
                     ConversationPage(it.arguments?.getString("id") ?: "",
                         onBack = { nav.popBackStack() },
-                        onNeedSettings = { nav.navigate("settings") })
+                        onNeedSettings = { nav.navigate("settings") },
+                        onOpenModels = { nav.navigate("models") })
                 }
                 composable("talk") { TalkPage() }
                 composable("build") { BuilderPage() }

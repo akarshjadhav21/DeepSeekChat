@@ -108,7 +108,8 @@ private val quickPrompts = listOf("Summarize", "Translate to English",
 
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> Unit) {
+fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> Unit,
+                     onOpenModels: () -> Unit = {}) {
     val ctx = LocalContext.current
     val chat = AppStore.chats.firstOrNull { it.id == chatId }
     var input by remember { mutableStateOf("") }
@@ -154,6 +155,12 @@ fun ConversationPage(chatId: String, onBack: () -> Unit, onNeedSettings: () -> U
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = C.textHi) }
             Text(chat?.title ?: "", style = MaterialTheme.typography.titleMedium,
                 color = C.textHi, maxLines = 1, modifier = Modifier.weight(1f))
+            // which brain is answering — tap to check/switch models
+            Text("🧠 " + (AppStore.prefs().getString("model", NviClient.DEFAULT_MODEL)
+                ?: NviClient.DEFAULT_MODEL).substringAfterLast('/').take(14),
+                color = C.accent, fontSize = 10.sp,
+                modifier = Modifier.clip(CircleShape).background(C.card)
+                    .clickable { onOpenModels() }.padding(horizontal = 7.dp, vertical = 4.dp))
             IconButton(onClick = { shareMarkdown() }) {
                 Icon(Icons.Filled.IosShare, "Export", tint = C.textMid) }
             // agent toggle: tap=on/off, long-press=auto-run

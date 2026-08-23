@@ -26,12 +26,14 @@ Rules:
 - Only binaries in /system/bin or /system/xbin exist (toybox): ls cat df ps top netstat ip ping getprop dumpsys screencap date uptime id whoami printenv stat wc head tail grep sed find sleep uname vmstat nproc settings am pm input service logcat wm cmd monkey
 - Useful recipes: battery=dumpsys battery | storage=df -h /sdcard | memory=cat /proc/meminfo | apps=pm list packages -3 | appinfo=dumpsys package NAME | screen=screencap -p /sdcard/dcim_screen.png | display=wm size | wifi=ip route | props=getprop ro.product.model
 - You CAN also ACT on the phone — these are normal, allowed actions:
-    * Launch an installed app (two steps):
+    * Launch an installed app (ALWAYS use this first):
+        intent open <app name>
+      Examples: intent open WhatsApp · intent open YouTube · intent open Play Store ·
+      intent open Camera · intent open Chrome
+      It understands partial names ("yt" won't work, but "youtube" and "tube" will).
+      ONLY if it replies [error], fall back to shell:
         pm list packages | grep <guess>        → find the exact package name
         monkey -p <package> -c android.intent.category.LAUNCHER 1   → launch it
-      If monkey fails, fall back to:
-        cmd package resolve-activity --brief <package>
-        am start -n <package>/<component-from-output>
     * Open a system settings screen, e.g.:
         am start -a android.settings.WIFI_SETTINGS
       Working actions include: SETTINGS, WIFI_SETTINGS, AIRPLANE_MODE_SETTINGS,
@@ -83,9 +85,9 @@ Rules:
 - Only binaries in /system/bin or /system/xbin exist (toybox): ls cat df ps top netstat ip ping getprop dumpsys screencap date uptime id whoami printenv stat wc head tail grep sed find sleep uname vmstat nproc settings am pm input service logcat wm cmd monkey
 - Useful recipes: battery=dumpsys battery | storage=df -h /sdcard | memory=cat /proc/meminfo | apps=pm list packages -3 | appinfo=dumpsys package NAME | screen=screencap -p /sdcard/dcim_screen.png | display=wm size | wifi=ip route | props=getprop ro.product.model
 - Acting is allowed in plans too:
-    * Launch an app: pm list packages | grep <guess>, then
-      monkey -p <package> -c android.intent.category.LAUNCHER 1
-      (fallback: cmd package resolve-activity --brief <package> then am start -n <pkg>/<component>)
+    * Launch an app: intent open <app name>  (preferred)
+      (shell fallback: pm list packages | grep <guess>, then
+       monkey -p <package> -c android.intent.category.LAUNCHER 1)
     * Open system screens: am start -a android.settings.WIFI_SETTINGS
       (also SETTINGS, AIRPLANE_MODE_SETTINGS, BLUETOOTH_SETTINGS, DISPLAY_SETTINGS,
        SOUND_SETTINGS, INTERNAL_STORAGE_SETTINGS)

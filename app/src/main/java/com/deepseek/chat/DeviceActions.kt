@@ -142,23 +142,56 @@ object DeviceActions {
     private fun openApp(name: String, ctx: Context): Pair<String, Intent?> {
         if (name.isEmpty()) return "[error] open needs an app name" to null
         val pm = ctx.packageManager
-        val q = name.lowercase()
-        var best: android.content.pm.ApplicationInfo? = null
-        var bestScore = 0
-        for (info in pm.getInstalledApplications(PackageManager.GET_META_DATA)) {
-            val label = runCatching { pm.getApplicationLabel(info).toString() }.getOrNull()?.lowercase() ?: continue
-            val pkg = info.packageName.lowercase()
-            val score = maxOf(
-                if (label == q) 4 else if (label.startsWith(q)) 2 else if (label.contains(q)) 1 else 0,
-                if (pkg == q) 3 else if (pkg.contains(q)) 1 else 0
-            )
-            if (score > bestScore) { bestScore = score; best = info }
+        var q = name.lowercase().trim()
+        // common aliases people say
+        q = when (q) {
+            "gallery", "photos app" -> "photos"
+            "dialer", "phone app" -> "phone"
+            "playstore", "play store", "market" -> "play store"
+            "browser", "internet" -> "chrome"
+            "messaging", "messages" -> "messages"
+            else -> q
         }
-        best ?: return "[error] no installed app matches '$name'" to null
-        val li = pm.getLaunchIntentForPackage(best.packageName)
-            ?: return "[error] '${best.packageName}' has no launchable screen" to null
+        val toks = q.split(Regex("\\s+")).filter { it.length >= 2 }
+        data class Cand(val info: android.content.pm.ApplicationInfo,
+                        val label: String, val score: Int)
+
+        val cands = mutableListOf<Cand>()
+        for (info in pm.getInstalledApplications(PackageManager.GET_META_DATA)) {
+            val label = runCatching { pm.getApplicationLabel(info).toString() }.getOrNull() ?: continue
+            val l = label.lowercase()
+            val pkg = info.packageName.lowercase()
+            if (info.enabled == false) continue
+            var s = 0
+            if (l == q || pkg == q) s = 100
+            else {
+                val lHit = toks.count { l.contains(it) }
+                val pHit = toks.count { pkg.contains(it) }
+                s = when {
+                    toks.isNotEmpty() && lHit == toks.size -> 60
+                    toks.isNotEmpty() && pHit == toks.size -> 50
+                    else -> maxOf(lHit, pHit) * 15
+                }
+                if (s > 0 && l.startsWith(q)) s += 20
+            }
+            if (s > 0) cands.add(Cand(info, label, s))
+        }
+        cands.sortByDescending { it.score }
+        val best = cands.firstOrNull()
+            ?: return ("[error] no installed app matches '$name'. Closest installed apps: " +
+                pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                    .mapNotNull { info ->
+                        runCatching { pm.getApplicationLabel(info).toString() }.getOrNull()
+                            ?.let { info to it }
+                    }
+                    .filter { (_, l) -> toks.any { l.lowercase().contains(it) } }
+                    .take(5).joinToString(" · ") { it.second }
+                    .ifBlank { "(none)" } +
+                " — retry with exactly one of those names.") to null
+        val li = pm.getLaunchIntentForPackage(best.info.packageName)
+            ?: return "[error] '${best.label}' has no launchable screen" to null
         li.addFlags(NEW_TASK)
-        return "Opened ${runCatching { pm.getApplicationLabel(best) }.getOrDefault(best.packageName)} (${best.packageName})." to li
+        return "Opened ${best.label} (${best.info.packageName})." to li
     }
 
     private fun score0(a: String, b: String): Int = if (a.contains(b)) 1 else 0
