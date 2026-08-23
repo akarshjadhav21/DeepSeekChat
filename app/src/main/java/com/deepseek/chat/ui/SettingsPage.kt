@@ -221,7 +221,7 @@ fun SettingsPage() {
             }
 
             Section("ℹ️ About") {
-                Text("DeepSeek Chat v3.4.1 · Talk overhaul", color = C.textMid, fontSize = 13.sp)
+                Text("DeepSeek Chat v3.5 · Hands phase 1", color = C.textMid, fontSize = 13.sp)
                 Text("Agent device actions · plan mode · scheduled reports · templates & one-tap releases · voice · vision. Free keys: build.nvidia.com",
                     color = C.textLow, fontSize = 12.sp)
             }

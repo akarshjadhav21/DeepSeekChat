@@ -247,9 +247,15 @@ object AppStore {
     private fun execAgentRun(cmd: String) {
         toolText = "$ $cmd\n⏳ running…"
         Thread {
-            val out = Agent.execute(cmd)
+            var fireIntent: Intent? = null
+            val out = if (cmd.startsWith("intent ")) {
+                val r = com.deepseek.chat.DeviceActions.run(cmd.removePrefix("intent "), appCtx)
+                fireIntent = r.second
+                r.first
+            } else Agent.execute(cmd)
             handler.post {
                 toolText = "$ $cmd\n${out.take(Agent.MAX_OUT)}"
+                fireIntent?.let { intentEvent = it }
                 feedToolOutput("[TOOL OUTPUT for `$cmd`]\n${out.take(Agent.MAX_OUT)}\n" +
                     "Continue with the next command or write your final answer.")
             }
@@ -306,6 +312,11 @@ object AppStore {
                         } catch (e: Exception) {
                             "[error] ${e.message}"
                         }
+                    }
+                    cmd.startsWith("intent ") -> {
+                        val r = com.deepseek.chat.DeviceActions.run(cmd.removePrefix("intent "), appCtx)
+                        r.second?.let { intentEvent = it }
+                        r.first
                     }
                     else -> Agent.execute(cmd)
                 }
